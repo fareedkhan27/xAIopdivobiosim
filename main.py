@@ -99,6 +99,22 @@ h1, h2, h3 { color: #f9fafb !important; }
 .stTabs [data-baseweb="tab-list"] { background: #1f2937; border-radius: 8px; }
 .stTabs [data-baseweb="tab"] { color: #9ca3af !important; }
 .stTabs [aria-selected="true"] { color: #00D4C8 !important; border-bottom-color: #00D4C8 !important; }
+/* ---- Login screen ---- */
+.login-wrapper {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 72vh;
+}
+.login-card {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 16px;
+    padding: 48px 56px;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+/* Disable pointer events on the password input placeholder row when not authed */
 </style>
 """, unsafe_allow_html=True)
 
@@ -147,12 +163,54 @@ def run_surveillance_thread(use_batch: bool):
 
 
 # ─── Session-state initialisation (must happen before any widget renders) ────
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
 if "surveillance_running" not in st.session_state:
     st.session_state["surveillance_running"] = False
 if "run_status" not in st.session_state:
     st.session_state["run_status"] = ""
 if "job_start_time" not in st.session_state:
     st.session_state["job_start_time"] = None
+
+# ─── Password gate ────────────────────────────────────────────────────────────
+_CORRECT_PASSWORD = "Opdivo2026"
+
+if not st.session_state["authenticated"]:
+    st.markdown(
+        """
+        <div class="login-wrapper">
+          <div class="login-card">
+            <div style="font-size:3rem;margin-bottom:10px;">💊</div>
+            <h2 style="color:#f9fafb;margin:0 0 6px 0;font-size:1.55rem;font-weight:700;">
+              Opdivo Biosimilar Intelligence
+            </h2>
+            <p style="color:#6b7280;font-size:0.82rem;margin:0 0 6px 0;letter-spacing:0.04em;
+                      text-transform:uppercase;">biosimintel.com</p>
+            <p style="color:#9ca3af;font-size:0.88rem;margin:0 0 32px 0;line-height:1.5;">
+              Restricted access &mdash; authorised BMS personnel only.
+            </p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col_l, col_c, col_r = st.columns([1, 2, 1])
+    with col_c:
+        pwd = st.text_input(
+            "Access Code",
+            type="password",
+            placeholder="Enter access code…",
+            label_visibility="collapsed",
+        )
+        login_btn = st.button("🔓 Enter Dashboard", use_container_width=True, type="primary")
+        if login_btn or pwd:  # allow Enter key submission
+            if pwd == _CORRECT_PASSWORD:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            elif pwd:  # only show error after the user has typed something
+                st.error("Incorrect access code. Please try again.")
+    st.stop()
 
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
@@ -215,6 +273,14 @@ with st.sidebar:
             t.start()
             st.rerun()   # immediately re-render so the button disables right away
 
+    # ── Auto-refresh every 30 s while a job is in flight ──────────────────
+    if job_running:
+        import time as _time
+        st.markdown(
+            '<meta http-equiv="refresh" content="30">',
+            unsafe_allow_html=True,
+        )
+
     # ── In-progress indicator ──────────────────────────────────────────────
     run_status = st.session_state["run_status"]
 
@@ -275,12 +341,17 @@ with st.sidebar:
         st.session_state["run_status"] = ""
 
     st.markdown("---")
-    latest = get_latest_report()
-    if latest:
-        ts = latest.get("run_date", "")[:19].replace("T", " ")
+    latest_meta = get_latest_report()
+    if latest_meta:
+        ts = latest_meta.get("run_date", "")[:19].replace("T", " ")
         st.caption(f"Last updated: {ts}")
     else:
         st.caption("No report yet. Click ▶ Run Now.")
+
+    st.markdown("---")
+    if st.button("🔒 Log Out", use_container_width=True):
+        st.session_state["authenticated"] = False
+        st.rerun()
 
 
 # ─── Load data ────────────────────────────────────────────────────────────────
