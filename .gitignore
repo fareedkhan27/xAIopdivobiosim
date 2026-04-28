@@ -1,8 +1,12 @@
 .env
 __pycache__/
 *.pyc
+*.pyo
 opdivo_reports.db
 .DS_Store
 *.jpg
 *.png
 wireframes/
+.venv/
+venv/
+env/

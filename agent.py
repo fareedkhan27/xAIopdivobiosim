@@ -33,10 +33,14 @@ from prompts import OPDIVO_SURVEILLANCE_PROMPT
 
 load_dotenv()
 
-XAI_API_KEY = os.getenv("XAI_API_KEY", "")
-
-# Build the xai-sdk sync client (reads XAI_API_KEY env var automatically if not passed)
-client = Client(api_key=XAI_API_KEY or None)
+# Build the xai-sdk sync client.
+# Raise early with a clear message if the key is missing rather than failing
+# silently later; do NOT store the key as a named module attribute.
+_api_key = os.getenv("XAI_API_KEY")
+if not _api_key:
+    raise EnvironmentError("XAI_API_KEY is not set. Add it to your .env file.")
+client = Client(api_key=_api_key)
+del _api_key  # don't keep the key alive as a named module attribute
 
 MODEL = "grok-3-mini-fast"      # switch to grok-3-latest or grok-4 when available
 BATCH_POLL_INTERVAL = 30        # seconds between poll attempts
