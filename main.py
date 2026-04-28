@@ -304,66 +304,30 @@ with st.sidebar:
             t.start()
             st.rerun()   # immediately re-render so the button disables right away
 
-    # ── Auto-rerun every 30 s while a job is in flight ─────────────────────
-    # We use st.rerun() via a short sleep instead of <meta http-equiv="refresh">
-    # because a hard browser reload destroys the Streamlit session (and wipes
-    # the authenticated flag).  st.rerun() keeps the session intact.
-    if job_running:
-        import time as _time
-        _time.sleep(30)
-        st.rerun()
-
     # ── In-progress indicator ──────────────────────────────────────────────
+    # (sleep + rerun is handled by the full-page banner in the main content area)
     run_status = st.session_state["run_status"]
 
     if job_running:
-        # Compute elapsed time for the live timer
+        # Compact sidebar chip — the main content area shows the full banner
         start: datetime | None = st.session_state.get("job_start_time")
         if start:
-            elapsed_sec  = int((datetime.now() - start).total_seconds())
-            elapsed_min  = elapsed_sec // 60
-            elapsed_str  = (
-                f"{elapsed_min}m {elapsed_sec % 60}s"
+            elapsed_sec = int((datetime.now() - start).total_seconds())
+            elapsed_min = elapsed_sec // 60
+            elapsed_str = (
+                f"{elapsed_min}m {elapsed_sec % 60:02d}s"
                 if elapsed_min else f"{elapsed_sec}s"
             )
-            timer_line = f"🕐 Job started **{elapsed_str} ago**"
         else:
-            timer_line = ""
-
-        if use_batch:
-            st.markdown(
-                f"""
-<div style="background:#1a2e1a;border:1px solid #166534;border-radius:10px;padding:14px 16px;">
-  <div style="color:#4ade80;font-weight:700;font-size:0.95rem;margin-bottom:6px;">
-    ⏳ Grok Batch Job Running
-  </div>
-  <div style="color:#bbf7d0;font-size:0.85rem;line-height:1.6;">
-    ✅ <b>50% cheaper</b> Batch mode active<br>
-    ⏱ Estimated time: <b>30 min – a few hours</b><br>
-    {timer_line}<br>
-    🌐 You can <b>safely close this tab</b> — the job runs in the background.
-  </div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f"""
-<div style="background:#1a1f2e;border:1px solid #1d4ed8;border-radius:10px;padding:14px 16px;">
-  <div style="color:#93c5fd;font-weight:700;font-size:0.95rem;margin-bottom:6px;">
-    ⏳ Sync Job Running
-  </div>
-  <div style="color:#bfdbfe;font-size:0.85rem;line-height:1.6;">
-    ⚡ Synchronous mode — faster but more expensive<br>
-    ⏱ Usually completes in <b>1–5 minutes</b><br>
-    {timer_line}<br>
-    ⚠️ Keep this tab open until finished.
-  </div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
+            elapsed_str = "…"
+        st.markdown(
+            f'<div style="background:#14532d;border:1px solid #166534;border-radius:8px;'
+            f'padding:10px 12px;font-size:0.82rem;color:#bbf7d0;line-height:1.6;">'
+            f'<b style="color:#4ade80;">⚙️ Job running</b><br>'
+            f'🕐 {elapsed_str} elapsed<br>'
+            f'<span style="color:#86efac;">See main area for details.</span></div>',
+            unsafe_allow_html=True,
+        )
 
     elif run_status == "done":
         st.success("✅ Job completed! Refresh the page to see the new report.")
@@ -395,6 +359,85 @@ verified        = data.get("verified_updates", [])
 social          = data.get("social_noise", [])
 ai_insights     = data.get("ai_insights", "")
 exec_summary    = data.get("executive_summary", "")
+
+# ─── Full-page progress banner (shown on every page while job is in flight) ───
+if st.session_state["surveillance_running"]:
+    _start: datetime | None = st.session_state.get("job_start_time")
+    if _start:
+        _elapsed_s   = int((datetime.now() - _start).total_seconds())
+        _elapsed_min = _elapsed_s // 60
+        _elapsed_str = (
+            f"{_elapsed_min}m {_elapsed_s % 60:02d}s"
+            if _elapsed_min else f"{_elapsed_s}s"
+        )
+    else:
+        _elapsed_str = "just started"
+
+    _use_batch = "Batch" in st.session_state.get("run_mode_select", "Batch")
+    _eta = "30 minutes to a few hours" if _use_batch else "1 – 5 minutes"
+    _mode_label = "Grok Batch API (50% cheaper)" if _use_batch else "Synchronous API"
+    _close_note = (
+        "You can safely close this tab — the job runs in the background."
+        if _use_batch
+        else "Keep this tab open until the job finishes."
+    )
+
+    st.markdown(
+        f"""
+<div style="
+  background: linear-gradient(135deg,#0f2027,#1a3a2a);
+  border: 2px solid #16a34a;
+  border-radius: 16px;
+  padding: 36px 40px;
+  margin-bottom: 28px;
+  box-shadow: 0 4px 32px rgba(0,212,150,0.15);
+">
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
+    <div style="font-size:2.4rem;line-height:1;">⚙️</div>
+    <div>
+      <div style="color:#4ade80;font-size:1.35rem;font-weight:800;letter-spacing:-0.01em;">
+        Surveillance job is running in the background…
+      </div>
+      <div style="color:#86efac;font-size:0.88rem;margin-top:3px;">
+        Mode: <b>{_mode_label}</b>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px;">
+    <div style="background:#14532d44;border:1px solid #166534;border-radius:10px;padding:14px 18px;">
+      <div style="color:#86efac;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;">⏱ Elapsed</div>
+      <div style="color:#f0fdf4;font-size:1.4rem;font-weight:700;">{_elapsed_str}</div>
+    </div>
+    <div style="background:#14532d44;border:1px solid #166534;border-radius:10px;padding:14px 18px;">
+      <div style="color:#86efac;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;">⏳ Estimated Duration</div>
+      <div style="color:#f0fdf4;font-size:1rem;font-weight:600;">{_eta}</div>
+    </div>
+    <div style="background:#14532d44;border:1px solid #166534;border-radius:10px;padding:14px 18px;">
+      <div style="color:#86efac;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;">📡 Status</div>
+      <div style="color:#4ade80;font-size:1rem;font-weight:600;">Active — polling Grok</div>
+    </div>
+  </div>
+
+  <div style="background:#052e16;border:1px solid #166534;border-radius:8px;padding:12px 16px;
+              color:#bbf7d0;font-size:0.88rem;line-height:1.7;">
+    💡 <b>{_close_note}</b><br>
+    🔄 This page auto-refreshes every 30 seconds. New results will appear automatically when ready.<br>
+    🚫 The <b>Run Now</b> button is locked until this job completes.
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    # Animated Streamlit progress bar — cycles to show activity
+    import time as _time
+    _progress_pct = min(95, (_elapsed_s // 60) * 3) if _start else 10  # caps at 95%
+    _prog_bar = st.progress(_progress_pct / 100, text=f"Grok is processing your request… ({_elapsed_str} elapsed)")
+
+    # 30-second sleep then rerun (keeps session alive, no browser reload)
+    _time.sleep(30)
+    st.rerun()
 
 # ─── Page routing ─────────────────────────────────────────────────────────────
 
