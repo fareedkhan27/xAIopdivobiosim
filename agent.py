@@ -164,7 +164,8 @@ _KNOWN_LAUNCHED: list[dict] = [
         "countries": "India",
         "est_launch": "2026",
         "probability": 100,
-        "strengths_weaknesses": "First-mover advantage in India; strong Zydus oncology distribution network.",
+        "strengths_weaknesses": "First-mover advantage in India; strong Zydus oncology distribution network. Risk of export into MEA/LATAM markets via Zydus international distribution.",
+        "source": "CDSCO approval notice, 2026",
     },
 ]
 
@@ -201,15 +202,41 @@ def _patch_companies(companies: list[dict]) -> list[dict]:
 
 
 def parse_grok_response(raw_text: str) -> dict:
-    """Strips markdown fences if present, JSON-parses, then applies ground-truth patches."""
+    """Strips markdown fences if present, JSON-parses, normalises schema, then applies patches."""
     text = raw_text.strip()
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
     if text.startswith("```"):
         lines = text.splitlines()
         text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+
     data = json.loads(text)
-    # Post-process: guarantee known launched products are always correct
+
+    # ── Guarantee known ground-truth entries are correct ──────────────────────
     if "companies" in data:
         data["companies"] = _patch_companies(data["companies"])
+
+    # ── Normalise my_markets_threat entries for backwards compatibility ────────
+    for threat in data.get("my_markets_threat", []):
+        # Ensure recommended_actions is always a list (model may return a string)
+        if isinstance(threat.get("recommended_actions"), str):
+            threat["recommended_actions"] = [threat["recommended_actions"]]
+        elif threat.get("recommended_actions") is None:
+            threat["recommended_actions"] = ["No immediate action required — maintain watch"]
+        # Ensure risk_rationale exists
+        if not threat.get("risk_rationale"):
+            threat["risk_rationale"] = "No rationale provided."
+
+    # ── Normalise social_noise entries (new schema added platform/signal_type) ─
+    for post in data.get("social_noise", []):
+        post.setdefault("platform", "X")
+        post.setdefault("signal_type", "Regulatory")
+        post.setdefault("date", None)
+
+    # ── Normalise verified_updates (new url / relevance fields) ──────────────
+    for update in data.get("verified_updates", []):
+        update.setdefault("url", None)
+        update.setdefault("relevance_to_lr_markets", "None")
+
     return data
 
 
