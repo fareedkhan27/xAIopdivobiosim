@@ -244,9 +244,9 @@ def run_surveillance_thread(use_batch: bool):
     always released in the finally block — even on exception — so the button
     can never get permanently stuck in a disabled state.
     """
-    from agent import run_surveillance
+    import agent as _agent
     try:
-        run_surveillance(use_batch=use_batch)
+        _agent.run_surveillance(use_batch=use_batch)
         st.session_state["run_status"] = "done"
     except Exception as exc:
         st.session_state["run_status"] = f"error: {exc}"
@@ -415,13 +415,43 @@ if st.session_state["surveillance_running"]:
         _elapsed_str = "just started"
 
     _use_batch = "Batch" in st.session_state.get("run_mode_select", "Batch")
-    _eta = "30 minutes to a few hours" if _use_batch else "1 – 5 minutes"
+    _eta = "30 minutes to a few hours" if _use_batch else "5 – 20 minutes"
     _mode_label = "Grok Batch API (50% cheaper)" if _use_batch else "Synchronous API"
     _close_note = (
         "You can safely close this tab — the job runs in the background."
         if _use_batch
         else "Keep this tab open until the job finishes."
     )
+
+    # Read live phase from agent module (set by _set_status() in the worker thread)
+    try:
+        import agent as _agent_mod
+        _job_phase   = _agent_mod.JOB_STATUS.get("phase", "running")
+        _job_detail  = _agent_mod.JOB_STATUS.get("detail", "")
+    except Exception:
+        _job_phase  = "running"
+        _job_detail = ""
+
+    _PHASE_LABELS = {
+        "idle":        "Waiting to start",
+        "starting":    "Initialising…",
+        "connecting":  "Connecting to Grok…",
+        "submitting":  "Submitting batch job…",
+        "queued":      "Job queued — waiting for Grok",
+        "waiting":     "Waiting for Grok response…",
+        "polling":     "Polling batch — waiting for completion…",
+        "retrieving":  "Downloading results…",
+        "received":    "Response received — parsing…",
+        "parsing":     "Parsing JSON response…",
+        "saving":      "Saving report to database…",
+        "emailing":    "Sending email alert…",
+        "done":        "Complete ✓",
+    }
+    _phase_display = _PHASE_LABELS.get(_job_phase, _job_phase.replace("_", " ").title())
+    if _job_detail:
+        _status_line = f"{_phase_display} — {_job_detail}"
+    else:
+        _status_line = _phase_display
 
     st.markdown(
         f"""
@@ -456,7 +486,7 @@ if st.session_state["surveillance_running"]:
     </div>
     <div style="background:#14532d44;border:1px solid #166534;border-radius:10px;padding:14px 18px;">
       <div style="color:#86efac;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;">📡 Status</div>
-      <div style="color:#4ade80;font-size:1rem;font-weight:600;">Active — polling Grok</div>
+      <div style="color:#4ade80;font-size:0.9rem;font-weight:600;">{_status_line}</div>
     </div>
   </div>
 
@@ -471,10 +501,9 @@ if st.session_state["surveillance_running"]:
         unsafe_allow_html=True,
     )
 
-    # Animated Streamlit progress bar — cycles to show activity
+    # Indeterminate spinner — no fake % that misleads users
     import time as _time
-    _progress_pct = min(95, (_elapsed_s // 60) * 3) if _start else 10  # caps at 95%
-    _prog_bar = st.progress(_progress_pct / 100, text=f"Grok is processing your request… ({_elapsed_str} elapsed)")
+    st.info(f"⏳ {_phase_display}  ·  Page auto-refreshes every 30 s", icon=None)
 
     # 30-second sleep then rerun (keeps session alive, no browser reload)
     _time.sleep(30)

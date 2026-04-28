@@ -20,8 +20,10 @@ Workflow:
 """
 
 import json
+import logging
 import os
 import time
+from datetime import datetime
 
 from dotenv import load_dotenv
 from xai_sdk.sync.client import Client
@@ -32,6 +34,14 @@ from notifications import send_email_alert
 from prompts import OPDIVO_SURVEILLANCE_PROMPT
 
 load_dotenv()
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [agent] %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+log = logging.getLogger(__name__)
 
 # Build the xai-sdk sync client.
 # Raise early with a clear message if the key is missing rather than failing
@@ -47,6 +57,18 @@ BATCH_POLL_INTERVAL = 30        # seconds between poll attempts
 BATCH_TIMEOUT = 14400           # 4 hours max
 BATCH_REQUEST_ID = "opdivo-surveillance-001"
 
+# ── Shared live-status dict (read by Streamlit UI for progress display) ───────
+# Written by agent functions; read by main.py via agent.JOB_STATUS.
+# Keys: phase (str), detail (str)
+JOB_STATUS: dict = {"phase": "idle", "detail": ""}
+
+
+def _set_status(phase: str, detail: str = "") -> None:
+    """Update the shared status dict and log the phase transition."""
+    JOB_STATUS["phase"] = phase
+    JOB_STATUS["detail"] = detail
+    log.info("[phase] %-15s  %s", phase, detail)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Low-level helpers
@@ -55,15 +77,25 @@ BATCH_REQUEST_ID = "opdivo-surveillance-001"
 def _call_chat(prompt: str) -> str:
     """Synchronous (non-batch) chat call — used for quick manual runs / fallback.
 
+    NOTE: With a large reasoning prompt, grok-3-mini-fast performs internal
+    chain-of-thought before replying.  Expect 5–20 minutes depending on
+    server load.
+
     Pattern:
         chat = client.chat.create(model, temperature=...)
         chat.append(user_msg("..."))
         response = chat.sample()       # blocks until model replies
         return response.content        # plain string
     """
+    _set_status("connecting", f"Opening sync chat with {MODEL}")
     chat = client.chat.create(model=MODEL, temperature=0)
     chat.append(user_msg(prompt))
+    _set_status("waiting", "Prompt sent — Grok is thinking (may take 5–20 min)")
+    t0 = time.time()
     response = chat.sample()
+    elapsed = time.time() - t0
+    log.info("Sync call completed in %.1fs (%.1f min)", elapsed, elapsed / 60)
+    _set_status("received", f"Response received in {elapsed:.0f}s — parsing JSON")
     return response.content or ""
 
 
@@ -85,7 +117,8 @@ def submit_batch_job() -> str:
     # 1. Create an empty named batch
     batch = client.batch.create("opdivo-surveillance")
     batch_id = batch.batch_id
-    print(f"[agent] Batch created: {batch_id}")
+    log.info("Batch created: %s", batch_id)
+    _set_status("submitting", f"Batch created: {batch_id}")
 
     # 2. Build the chat request (NOT executed yet — will be sent to the batch)
     chat = client.chat.create(
@@ -97,7 +130,8 @@ def submit_batch_job() -> str:
 
     # 3. Add the request to the batch (this seals + starts processing)
     client.batch.add(batch_id=batch_id, batch_requests=[chat])
-    print(f"[agent] Batch request added & sealed: {batch_id}")
+    log.info("Batch request added & sealed: %s", batch_id)
+    _set_status("queued", f"Batch job sealed and queued: {batch_id}")
     return batch_id
 
 
@@ -113,23 +147,31 @@ def poll_batch_job(batch_id: str) -> str:
         .succeeded[0].response.content
     """
     deadline = time.time() + BATCH_TIMEOUT
+    poll_count = 0
     while time.time() < deadline:
         batch_info = client.batch.get(batch_id)
         state = batch_info.state
-        print(
-            f"[agent] Batch {batch_id} — "
-            f"pending={state.num_pending} success={state.num_success} "
-            f"error={state.num_error} cancelled={state.num_cancelled} "
+        poll_count += 1
+        status_detail = (
+            f"Poll #{poll_count} — pending={state.num_pending} "
+            f"success={state.num_success} error={state.num_error} "
             f"total={state.num_requests}"
+        )
+        _set_status("polling", status_detail)
+        log.info(
+            "Batch %s — pending=%s success=%s error=%s cancelled=%s total=%s",
+            batch_id, state.num_pending, state.num_success,
+            state.num_error, state.num_cancelled, state.num_requests,
         )
 
         if state.num_requests > 0 and state.num_pending == 0:
             # All requests have been processed
+            _set_status("retrieving", "All requests complete — fetching results")
             results_page = client.batch.list_batch_results(batch_id)
 
             if results_page.failed:
                 for r in results_page.failed:
-                    print(f"[agent] Failed request {r.batch_request_id}: {r.error_message}")
+                    log.error("Failed request %s: %s", r.batch_request_id, r.error_message)
 
             for result in results_page.succeeded:
                 if result.batch_request_id == BATCH_REQUEST_ID:
@@ -253,26 +295,43 @@ def run_surveillance(use_batch: bool = True) -> dict:
       4. Send email alert
     Returns the parsed data dict.
     """
+    mode_label = "BATCH" if use_batch else "SYNC"
+    t_start = datetime.now()
+    log.info("=== Surveillance START [mode=%s] at %s ===", mode_label, t_start.isoformat())
+    _set_status("starting", f"Initialising {mode_label} surveillance run")
+
     init_db()
 
     if use_batch:
         batch_id = submit_batch_job()
         raw_text = poll_batch_job(batch_id)
     else:
-        print("[agent] Running synchronous (non-batch) call …")
+        log.info("Running SYNC call — model=%s", MODEL)
+        _set_status("connecting", f"Sending prompt to {MODEL} via Sync API")
         raw_text = _call_chat(OPDIVO_SURVEILLANCE_PROMPT)
 
+    _set_status("parsing", "Parsing JSON response from Grok")
     data = parse_grok_response(raw_text)
     summary = data.get("executive_summary", "No summary available.")
+
+    _set_status("saving", "Saving report to database")
     save_report(data, summary)
-    print("[agent] Report saved to DB.")
+    log.info("Report saved to DB.")
 
     try:
+        _set_status("emailing", "Sending email alert")
         send_email_alert(summary)
-        print("[agent] Email alert sent.")
+        log.info("Email alert sent.")
     except Exception as exc:
-        print(f"[agent] Email failed (non-fatal): {exc}")
+        log.warning("Email failed (non-fatal): %s", exc)
 
+    t_end = datetime.now()
+    duration = (t_end - t_start).total_seconds()
+    log.info(
+        "=== Surveillance COMPLETE [mode=%s] duration=%.1fs (%.1f min) at %s ===",
+        mode_label, duration, duration / 60, t_end.isoformat(),
+    )
+    _set_status("done", f"Completed in {duration:.0f}s")
     return data
 
 
