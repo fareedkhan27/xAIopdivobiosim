@@ -43,6 +43,10 @@ if "run_status" not in st.session_state:
     st.session_state["run_status"] = ""
 if "job_start_time" not in st.session_state:
     st.session_state["job_start_time"] = None
+if "last_report" not in st.session_state:
+    # Load once from DB on first visit; subsequent reruns use the cached copy
+    # unless explicitly invalidated (e.g. after a completed job).
+    st.session_state["last_report"] = get_latest_report()
 
 # ─── Password gate ────────────────────────────────────────────────────────────
 # Checked immediately after session state is ready — before CSS, DB, or any UI.
@@ -330,17 +334,39 @@ with st.sidebar:
         )
 
     elif run_status == "done":
-        st.success("✅ Job completed! Refresh the page to see the new report.")
+        # Job finished — pull the fresh report from DB, cache it, then rerun
+        # once so the dashboard immediately shows the new data.
+        st.session_state["last_report"] = get_latest_report()
         st.session_state["run_status"] = ""
+        st.rerun()
     elif run_status.startswith("error"):
         st.error(f"❌ {run_status}")
         st.session_state["run_status"] = ""
 
     st.markdown("---")
-    latest_meta = get_latest_report()
-    if latest_meta:
-        ts = latest_meta.get("run_date", "")[:19].replace("T", " ")
-        st.caption(f"Last updated: {ts}")
+    _cached = st.session_state["last_report"]
+    if _cached:
+        _ts = _cached.get("run_date", "")[:19].replace("T", " ")
+        # Show report age
+        try:
+            _age = datetime.now() - datetime.fromisoformat(_cached.get("run_date", ""))
+            _age_h = int(_age.total_seconds() // 3600)
+            _age_d = _age.days
+            _age_str = (
+                f"{_age_d}d ago" if _age_d >= 1
+                else f"{_age_h}h ago" if _age_h >= 1
+                else "< 1h ago"
+            )
+        except Exception:
+            _age_str = ""
+        st.markdown(
+            f'<div style="background:#1f2937;border:1px solid #374151;border-radius:8px;'
+            f'padding:10px 12px;font-size:0.80rem;color:#9ca3af;line-height:1.6;">'
+            f'<b style="color:#d1d5db;">📄 Cached Report</b><br>'
+            f'{_ts}<br>'
+            f'<span style="color:#6b7280;">{_age_str}</span></div>',
+            unsafe_allow_html=True,
+        )
     else:
         st.caption("No report yet. Click ▶ Run Now.")
 
@@ -350,8 +376,13 @@ with st.sidebar:
         st.rerun()
 
 
-# ─── Load data ────────────────────────────────────────────────────────────────
-latest = get_latest_report()
+# ─── Load data from session-state cache ──────────────────────────────────────
+# Always read from the cached report so we avoid redundant DB queries on every
+# 30-second rerun while a job is polling.  The cache is invalidated (refreshed
+# from DB) in two places:
+#   1. Immediately after a job completes (run_status == "done" handler above).
+#   2. On the very first load of the session (initialised in session-state boot).
+latest = st.session_state["last_report"]
 data = load_report_data(latest)
 
 companies       = data.get("companies", [])
@@ -451,6 +482,33 @@ if page == "📊 Dashboard":
     if not data:
         st.warning("No report found. Use the sidebar to run a new surveillance sweep.")
         st.stop()
+
+    # ── Cached-report info strip ────────────────────────────────────────────
+    if latest:
+        try:
+            _rpt_age = datetime.now() - datetime.fromisoformat(latest.get("run_date", ""))
+            _rpt_h   = int(_rpt_age.total_seconds() // 3600)
+            _rpt_d   = _rpt_age.days
+            _rpt_age_str = (
+                f"{_rpt_d} day{'s' if _rpt_d != 1 else ''} ago"
+                if _rpt_d >= 1 else
+                f"{_rpt_h} hour{'s' if _rpt_h != 1 else ''} ago"
+                if _rpt_h >= 1 else "less than 1 hour ago"
+            )
+            _rpt_ts = latest.get("run_date", "")[:19].replace("T", " ")
+            st.markdown(
+                f'<div style="background:#1f2937;border:1px solid #374151;border-radius:8px;'
+                f'padding:9px 16px;margin-bottom:16px;font-size:0.82rem;color:#9ca3af;'
+                f'display:flex;align-items:center;gap:10px;">'
+                f'<span style="color:#00D4C8;font-size:1rem;">📋</span>'
+                f'Showing <b style="color:#d1d5db;">cached report</b> from '
+                f'<b style="color:#d1d5db;">{_rpt_ts}</b> &nbsp;·&nbsp; {_rpt_age_str}'
+                f'&nbsp;&nbsp;<span style="color:#4b5563;">|&nbsp; Run a new sweep to refresh.</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        except Exception:
+            pass
 
     # ── Derived KPI values ──────────────────────────────────────────────────
     launched_cos  = [c for c in companies if "launch" in c.get("phase", "").lower()]
