@@ -24,13 +24,92 @@ import streamlit as st
 
 from db import get_all_reports, get_latest_report, init_db
 
-# ─── Page config ──────────────────────────────────────────────────────────────
+# ─── Page config ─────────────────────────────────────────────────────────────
+# MUST be the very first Streamlit call in the script.
 st.set_page_config(
     page_title="Opdivo Biosimilar Surveillance",
     page_icon="💊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ─── Session-state bootstrap (must come before ANY other code) ────────────────
+# Initialise every key we rely on so they always exist, even on a fresh session.
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+if "surveillance_running" not in st.session_state:
+    st.session_state["surveillance_running"] = False
+if "run_status" not in st.session_state:
+    st.session_state["run_status"] = ""
+if "job_start_time" not in st.session_state:
+    st.session_state["job_start_time"] = None
+
+# ─── Password gate ────────────────────────────────────────────────────────────
+# Checked immediately after session state is ready — before CSS, DB, or any UI.
+_CORRECT_PASSWORD = "lrbiosim"
+
+if not st.session_state["authenticated"]:
+    # Inject minimal CSS so the login card renders correctly even though the
+    # full stylesheet hasn't loaded yet.
+    st.markdown("""
+    <style>
+    html, body, [class*="css"] {
+        background-color: #111827 !important;
+        color: #f3f4f6 !important;
+        font-family: 'Inter', 'Segoe UI', sans-serif;
+    }
+    .stButton > button {
+        background: #00D4C8 !important;
+        color: #111827 !important;
+        font-weight: 600 !important;
+        border-radius: 8px !important;
+        border: none !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="display:flex;flex-direction:column;align-items:center;
+                justify-content:center;min-height:65vh;">
+      <div style="background:#1f2937;border:1px solid #374151;border-radius:16px;
+                  padding:48px 56px;max-width:420px;width:100%;text-align:center;
+                  box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+        <div style="font-size:3rem;margin-bottom:10px;">💊</div>
+        <h2 style="color:#f9fafb;margin:0 0 6px 0;font-size:1.55rem;font-weight:700;">
+          Opdivo Biosimilar Intelligence
+        </h2>
+        <p style="color:#6b7280;font-size:0.82rem;margin:0 0 6px 0;
+                  letter-spacing:0.04em;text-transform:uppercase;">biosimintel.com</p>
+        <p style="color:#9ca3af;font-size:0.88rem;margin:0 0 32px 0;line-height:1.5;">
+          Restricted access &mdash; authorised BMS personnel only.
+        </p>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _col_l, _col_c, _col_r = st.columns([1, 2, 1])
+    with _col_c:
+        _pwd = st.text_input(
+            "Access Code",
+            type="password",
+            placeholder="Enter access code\u2026",
+            label_visibility="collapsed",
+            key="login_pwd_input",
+        )
+        _login_btn = st.button(
+            "\U0001f513 Enter Dashboard",
+            use_container_width=True,
+            type="primary",
+            key="login_btn",
+        )
+        if _login_btn or _pwd:
+            if _pwd == _CORRECT_PASSWORD:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            elif _pwd:
+                st.error("Incorrect access code. Please try again.")
+    # Hard stop — nothing below this line renders until authenticated.
+    st.stop()
 
 # ─── Custom CSS (dark-mode biotech theme) ─────────────────────────────────────
 st.markdown("""
@@ -162,55 +241,7 @@ def run_surveillance_thread(use_batch: bool):
         st.session_state["job_start_time"] = None
 
 
-# ─── Session-state initialisation (must happen before any widget renders) ────
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
-if "surveillance_running" not in st.session_state:
-    st.session_state["surveillance_running"] = False
-if "run_status" not in st.session_state:
-    st.session_state["run_status"] = ""
-if "job_start_time" not in st.session_state:
-    st.session_state["job_start_time"] = None
-
-# ─── Password gate ────────────────────────────────────────────────────────────
-_CORRECT_PASSWORD = "lrbiosim"
-
-if not st.session_state["authenticated"]:
-    st.markdown(
-        """
-        <div class="login-wrapper">
-          <div class="login-card">
-            <div style="font-size:3rem;margin-bottom:10px;">💊</div>
-            <h2 style="color:#f9fafb;margin:0 0 6px 0;font-size:1.55rem;font-weight:700;">
-              Opdivo Biosimilar Intelligence
-            </h2>
-            <p style="color:#6b7280;font-size:0.82rem;margin:0 0 6px 0;letter-spacing:0.04em;
-                      text-transform:uppercase;">biosimintel.com</p>
-            <p style="color:#9ca3af;font-size:0.88rem;margin:0 0 32px 0;line-height:1.5;">
-              Restricted access &mdash; authorised BMS personnel only.
-            </p>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    col_l, col_c, col_r = st.columns([1, 2, 1])
-    with col_c:
-        pwd = st.text_input(
-            "Access Code",
-            type="password",
-            placeholder="Enter access code…",
-            label_visibility="collapsed",
-        )
-        login_btn = st.button("🔓 Enter Dashboard", use_container_width=True, type="primary")
-        if login_btn or pwd:  # allow Enter key submission
-            if pwd == _CORRECT_PASSWORD:
-                st.session_state["authenticated"] = True
-                st.rerun()
-            elif pwd:  # only show error after the user has typed something
-                st.error("Incorrect access code. Please try again.")
-    st.stop()
+# (Session state and password gate have already run at the top of the file.)
 
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
@@ -273,13 +304,14 @@ with st.sidebar:
             t.start()
             st.rerun()   # immediately re-render so the button disables right away
 
-    # ── Auto-refresh every 30 s while a job is in flight ──────────────────
+    # ── Auto-rerun every 30 s while a job is in flight ─────────────────────
+    # We use st.rerun() via a short sleep instead of <meta http-equiv="refresh">
+    # because a hard browser reload destroys the Streamlit session (and wipes
+    # the authenticated flag).  st.rerun() keeps the session intact.
     if job_running:
         import time as _time
-        st.markdown(
-            '<meta http-equiv="refresh" content="30">',
-            unsafe_allow_html=True,
-        )
+        _time.sleep(30)
+        st.rerun()
 
     # ── In-progress indicator ──────────────────────────────────────────────
     run_status = st.session_state["run_status"]
