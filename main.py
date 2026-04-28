@@ -33,6 +33,20 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ─── Database initialisation ─────────────────────────────────────────────────
+# Called unconditionally on every startup — CREATE TABLE IF NOT EXISTS makes it
+# fully idempotent (safe to run on every rerun, no-ops if tables already exist).
+import logging as _logging
+_logging.basicConfig(level=_logging.INFO)
+_log = _logging.getLogger(__name__)
+try:
+    init_db()
+    _log.info("Database initialized successfully.")
+except Exception as _db_err:
+    _log.error("Database initialization failed: %s", _db_err)
+    st.error(f"⚠️ Database error: {_db_err}. Please contact support.")
+    st.stop()
+
 # ─── Session-state bootstrap (must come before ANY other code) ────────────────
 # Initialise every key we rely on so they always exist, even on a fresh session.
 if "authenticated" not in st.session_state:
@@ -200,10 +214,6 @@ h1, h2, h3 { color: #f9fafb !important; }
 /* Disable pointer events on the password input placeholder row when not authed */
 </style>
 """, unsafe_allow_html=True)
-
-
-# ─── DB init ──────────────────────────────────────────────────────────────────
-init_db()
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
