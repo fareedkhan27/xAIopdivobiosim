@@ -173,7 +173,7 @@ if "job_start_time" not in st.session_state:
     st.session_state["job_start_time"] = None
 
 # ─── Password gate ────────────────────────────────────────────────────────────
-_CORRECT_PASSWORD = "Opdivo2026"
+_CORRECT_PASSWORD = "lrbiosim"
 
 if not st.session_state["authenticated"]:
     st.markdown(
