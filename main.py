@@ -30,7 +30,17 @@ st.set_page_config(
     page_title="Opdivo Biosimilar Surveillance",
     page_icon="💊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
+)
+
+# ─── Viewport meta tag (critical for iOS Safari) ─────────────────────────────
+# Streamlit does not inject width=device-width by default, which causes iOS
+# Safari to render a zoomed-out blank page.  Injecting it via st.markdown with
+# unsafe_allow_html is the only reliable approach in a deployed Streamlit app.
+st.markdown(
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0, '
+    'maximum-scale=5.0, user-scalable=yes">',
+    unsafe_allow_html=True,
 )
 
 # ─── Database initialisation ─────────────────────────────────────────────────
@@ -80,37 +90,49 @@ if not st.session_state["authenticated"]:
         color: #f3f4f6 !important;
         font-family: 'Inter', 'Segoe UI', sans-serif;
     }
+    /* Mobile: remove Streamlit's default side padding so login card fills screen */
+    .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
     .stButton > button {
         background: #00D4C8 !important;
         color: #111827 !important;
         font-weight: 600 !important;
         border-radius: 8px !important;
         border: none !important;
+        width: 100% !important;
+        min-height: 48px !important;  /* iOS tap target */
+    }
+    /* Make text inputs tappable on iOS */
+    input[type="password"], input[type="text"] {
+        font-size: 16px !important;  /* prevents iOS auto-zoom on focus */
+        min-height: 44px !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
     st.markdown("""
     <div style="display:flex;flex-direction:column;align-items:center;
-                justify-content:center;min-height:65vh;">
+                justify-content:center;padding:2rem 0;">
       <div style="background:#1f2937;border:1px solid #374151;border-radius:16px;
-                  padding:48px 56px;max-width:420px;width:100%;text-align:center;
-                  box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                  padding:clamp(24px,5vw,48px) clamp(20px,6vw,56px);
+                  max-width:420px;width:100%;text-align:center;
+                  box-shadow:0 8px 32px rgba(0,0,0,0.5);box-sizing:border-box;">
         <div style="font-size:3rem;margin-bottom:10px;">💊</div>
-        <h2 style="color:#f9fafb;margin:0 0 6px 0;font-size:1.55rem;font-weight:700;">
+        <h2 style="color:#f9fafb;margin:0 0 6px 0;font-size:clamp(1.2rem,4vw,1.55rem);font-weight:700;">
           Opdivo Biosimilar Intelligence
         </h2>
         <p style="color:#6b7280;font-size:0.82rem;margin:0 0 6px 0;
                   letter-spacing:0.04em;text-transform:uppercase;">biosimintel.com</p>
-        <p style="color:#9ca3af;font-size:0.88rem;margin:0 0 32px 0;line-height:1.5;">
+        <p style="color:#9ca3af;font-size:0.88rem;margin:0 0 24px 0;line-height:1.5;">
           Restricted access &mdash; authorised BMS personnel only.
         </p>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    _col_l, _col_c, _col_r = st.columns([1, 2, 1])
-    with _col_c:
+    # Single-column layout on mobile — no side gutters that crush the input
+    with st.container():
+        _lcol, _ccol, _rcol = st.columns([1, 4, 1])
+    with _ccol:
         _pwd = st.text_input(
             "Access Code",
             type="password",
@@ -133,89 +155,190 @@ if not st.session_state["authenticated"]:
     # Hard stop — nothing below this line renders until authenticated.
     st.stop()
 
-# ─── Custom CSS (dark-mode biotech theme) ─────────────────────────────────────
+# ─── Custom CSS (dark-mode biotech theme — mobile-first) ─────────────────────
 st.markdown("""
 <style>
-/* ---- Base ---- */
+/* ════════════════════════════════════════════════════════
+   BASE  (applies to all screen sizes)
+   ════════════════════════════════════════════════════════ */
 html, body, [class*="css"] {
     background-color: #111827 !important;
     color: #f3f4f6 !important;
     font-family: 'Inter', 'Segoe UI', sans-serif;
 }
+
+/* Streamlit main container — tighter horizontal padding on mobile */
+.block-container {
+    padding-top: 1.5rem !important;
+    padding-left: clamp(0.75rem, 3vw, 3rem) !important;
+    padding-right: clamp(0.75rem, 3vw, 3rem) !important;
+    max-width: 100% !important;
+}
+
 /* ---- Sidebar ---- */
 section[data-testid="stSidebar"] {
     background-color: #1f2937 !important;
     border-right: 1px solid #374151;
 }
-/* ---- Cards ---- */
+
+/* ---- KPI cards — stack on mobile, row on wider screens ---- */
 .kpi-card {
     background: #1f2937;
     border: 1px solid #374151;
     border-radius: 12px;
-    padding: 20px 24px;
+    padding: clamp(12px, 3vw, 20px) clamp(10px, 3vw, 24px);
     text-align: center;
+    min-width: 0;          /* allow shrink in flex/grid */
+    word-break: break-word;
 }
-.kpi-value { font-size: 2.2rem; font-weight: 700; color: #00D4C8; }
-.kpi-label { font-size: 0.85rem; color: #9ca3af; margin-top: 4px; }
+.kpi-value {
+    font-size: clamp(1.4rem, 4vw, 2.2rem);
+    font-weight: 700;
+    color: #00D4C8;
+    line-height: 1.2;
+}
+.kpi-label { font-size: clamp(0.72rem, 2vw, 0.85rem); color: #9ca3af; margin-top: 4px; }
+
 /* ---- Update cards ---- */
 .update-card {
     background: #1f2937;
     border-left: 4px solid #00D4C8;
     border-radius: 8px;
-    padding: 16px 20px;
+    padding: 14px 16px;
     margin-bottom: 12px;
+    word-break: break-word;
 }
 .update-card .source { font-size: 0.78rem; color: #9ca3af; }
 .update-card .title  { font-weight: 600; margin: 4px 0; color: #f3f4f6; }
 .update-card .body   { font-size: 0.9rem; color: #d1d5db; }
+
 /* ---- Social post cards ---- */
 .post-card {
     background: #1f2937;
     border: 1px solid #374151;
     border-radius: 10px;
-    padding: 14px 18px;
+    padding: 12px 14px;
     margin-bottom: 10px;
+    word-break: break-word;
 }
 .post-card .user  { font-weight: 600; color: #3B82F6; }
 .post-card .time  { font-size: 0.78rem; color: #6b7280; margin-left: 8px; }
-.post-card .text  { margin-top: 8px; font-size: 0.92rem; }
+.post-card .text  { margin-top: 8px; font-size: 0.9rem; }
+
 /* ---- Badges ---- */
-.badge-pos { background:#065f46; color:#6ee7b7; padding:2px 10px; border-radius:99px; font-size:0.78rem; }
-.badge-neu { background:#3b3a1e; color:#fde68a; padding:2px 10px; border-radius:99px; font-size:0.78rem; }
-.badge-neg { background:#7f1d1d; color:#fca5a5; padding:2px 10px; border-radius:99px; font-size:0.78rem; }
+.badge-pos { background:#065f46; color:#6ee7b7; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
+.badge-neu { background:#3b3a1e; color:#fde68a; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
+.badge-neg { background:#7f1d1d; color:#fca5a5; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
+
 /* ---- Headings ---- */
-h1, h2, h3 { color: #f9fafb !important; }
-/* ---- Buttons ---- */
+h1 { font-size: clamp(1.4rem, 5vw, 2rem) !important; color: #f9fafb !important; }
+h2 { font-size: clamp(1.1rem, 4vw, 1.5rem) !important; color: #f9fafb !important; }
+h3 { font-size: clamp(1rem, 3vw, 1.25rem) !important; color: #f9fafb !important; }
+
+/* ---- Buttons — minimum 44px touch target (Apple HIG) ---- */
 .stButton > button {
     background: #00D4C8 !important;
     color: #111827 !important;
     font-weight: 600 !important;
     border-radius: 8px !important;
     border: none !important;
+    min-height: 44px !important;
+    font-size: clamp(0.85rem, 2.5vw, 1rem) !important;
 }
 .stButton > button:hover { background: #00b8ae !important; }
-/* ---- Dataframe ---- */
-.stDataFrame { border-radius: 8px; overflow: hidden; }
-/* ---- Tabs ---- */
-.stTabs [data-baseweb="tab-list"] { background: #1f2937; border-radius: 8px; }
-.stTabs [data-baseweb="tab"] { color: #9ca3af !important; }
-.stTabs [aria-selected="true"] { color: #00D4C8 !important; border-bottom-color: #00D4C8 !important; }
-/* ---- Login screen ---- */
-.login-wrapper {
-    display: flex; align-items: center; justify-content: center;
-    min-height: 72vh;
+
+/* ---- Inputs — font-size 16px prevents iOS auto-zoom ---- */
+input, textarea, select,
+[data-baseweb="input"] input,
+[data-baseweb="textarea"] textarea {
+    font-size: 16px !important;
+    min-height: 44px !important;
 }
-.login-card {
+
+/* ---- Dataframe — horizontal scroll on mobile ---- */
+.stDataFrame {
+    border-radius: 8px;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+}
+.stDataFrame > div { min-width: 0 !important; }
+
+/* ---- Tabs — scrollable on mobile ---- */
+.stTabs [data-baseweb="tab-list"] {
     background: #1f2937;
-    border: 1px solid #374151;
-    border-radius: 16px;
-    padding: 48px 56px;
-    max-width: 420px;
-    width: 100%;
-    text-align: center;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    border-radius: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
 }
-/* Disable pointer events on the password input placeholder row when not authed */
+.stTabs [data-baseweb="tab"] {
+    color: #9ca3af !important;
+    white-space: nowrap;
+    min-width: fit-content;
+    padding: 8px 12px !important;
+    font-size: clamp(0.78rem, 2vw, 0.9rem) !important;
+}
+.stTabs [aria-selected="true"] { color: #00D4C8 !important; border-bottom-color: #00D4C8 !important; }
+
+/* ---- Plotly charts — don't overflow ---- */
+.js-plotly-plot, .plotly { max-width: 100% !important; }
+
+/* ---- Progress banner grid — stack on mobile ---- */
+.banner-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+/* ════════════════════════════════════════════════════════
+   MOBILE  (≤ 640 px — iPhone SE through iPhone 16 Pro Max)
+   ════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+    /* Remove all horizontal margin/padding that causes overflow */
+    .block-container {
+        padding-left: 0.6rem !important;
+        padding-right: 0.6rem !important;
+        padding-top: 0.75rem !important;
+    }
+
+    /* Hide default Streamlit padding wrapper */
+    .css-1d391kg, .css-18e3th9 { padding: 0 !important; }
+
+    /* KPI value smaller on phone */
+    .kpi-value { font-size: 1.5rem; }
+    .kpi-label { font-size: 0.72rem; }
+    .kpi-card  { padding: 10px 8px; border-radius: 8px; }
+
+    /* Banner grid stacks to 1 col on phone */
+    .banner-grid { grid-template-columns: 1fr !important; }
+
+    /* Sidebar toggle button — make it bigger */
+    button[kind="header"] { min-height: 48px !important; min-width: 48px !important; }
+
+    /* Full-width select boxes and radios */
+    .stSelectbox, .stRadio { width: 100% !important; }
+
+    /* Plotly — prevent overflow */
+    .js-plotly-plot .main-svg { width: 100% !important; }
+
+    /* Info strips — allow wrap */
+    div[style*="display:flex"] { flex-wrap: wrap !important; }
+
+    /* Reduce font sizes for prose */
+    p, li, td, th { font-size: 0.88rem !important; }
+}
+
+/* ════════════════════════════════════════════════════════
+   SMALL TABLET  (641 px – 900 px)
+   ════════════════════════════════════════════════════════ */
+@media (min-width: 641px) and (max-width: 900px) {
+    .kpi-value { font-size: 1.7rem; }
+    .block-container {
+        padding-left: 1.25rem !important;
+        padding-right: 1.25rem !important;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -484,7 +607,7 @@ if st.session_state["surveillance_running"]:
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px;">
+  <div class="banner-grid">
     <div style="background:#14532d44;border:1px solid #166534;border-radius:10px;padding:14px 18px;">
       <div style="color:#86efac;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;">⏱ Elapsed</div>
       <div style="color:#f0fdf4;font-size:1.4rem;font-weight:700;">{_elapsed_str}</div>
@@ -544,7 +667,7 @@ if page == "📊 Dashboard":
                 if _rpt_h >= 1 else "less than 1 hour ago"
             )
             _rpt_ts = latest.get("run_date", "")[:19].replace("T", " ")
-            _strip_col, _hist_col = st.columns([8, 1])
+            _strip_col, _hist_col = st.columns([6, 1])
             with _strip_col:
                 st.markdown(
                     f'<div style="background:#1f2937;border:1px solid #374151;border-radius:8px;'
@@ -575,7 +698,9 @@ if page == "📊 Dashboard":
     my_threats = data.get("my_markets_threat", []) if data else []
     threat_count = len({t.get("company", "") for t in my_threats if t.get("company")})
 
-    kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
+    # On mobile Streamlit stacks narrow columns automatically; gap=True adds
+    # breathing room between cards at all screen sizes.
+    kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6, gap="small")
 
     # Hardcoded baseline list shown even when Grok returns no data
     _BASELINE_COMPANIES = [
@@ -749,7 +874,8 @@ elif page == "🔬 Pipeline Tracker":
     launched_only = st.toggle("✅ Show Launched only", value=False)
 
     # ── Filters row ──────────────────────────────────────────────────────────
-    fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 3])
+    # Filter row — collapses gracefully on narrow screens
+    fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 3], gap="small")
     company_filter = fc1.multiselect("Company",  sorted(df["company"].unique()))
     phase_filter   = fc2.multiselect("Phase",    sorted(df["phase"].unique()))
     country_filter = fc3.text_input("Country contains")
@@ -901,7 +1027,7 @@ elif page == "📣 Social Noise":
         st.warning("No social data. Run a surveillance sweep first.")
         st.stop()
 
-    left, right = st.columns([7, 3])
+    left, right = st.columns([7, 3], gap="small")
 
     with left:
         sent_filter = st.multiselect("Filter by sentiment", ["Positive", "Neutral", "Negative"])
@@ -1215,7 +1341,7 @@ elif page == "🌍 LR Markets":
     _n_cos  = len({t.get("company", "") for t in raw_threats if t.get("company")})
     _n_ctry = len({t.get("country", "")  for t in raw_threats if t.get("country")})
 
-    sk1, sk2, sk3, sk4 = st.columns(4)
+    sk1, sk2, sk3, sk4 = st.columns(4, gap="small")
     sk1.metric("Total Active Threats",  _total)
     sk2.metric("High-Risk Threats",     _n_high,
                delta="Needs immediate attention" if _n_high else None)
