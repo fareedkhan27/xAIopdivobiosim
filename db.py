@@ -37,9 +37,10 @@ def save_report(raw_json: dict, summary: str):
 
 
 def get_latest_report() -> dict | None:
+    """Return the single most-recent report, ordered by run_date descending."""
     conn = get_db()
     row = conn.execute(
-        "SELECT * FROM reports ORDER BY id DESC LIMIT 1"
+        "SELECT * FROM reports ORDER BY run_date DESC LIMIT 1"
     ).fetchone()
     conn.close()
     return dict(row) if row else None

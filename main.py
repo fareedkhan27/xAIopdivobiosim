@@ -58,9 +58,13 @@ if "run_status" not in st.session_state:
 if "job_start_time" not in st.session_state:
     st.session_state["job_start_time"] = None
 if "last_report" not in st.session_state:
-    # Load once from DB on first visit; subsequent reruns use the cached copy
-    # unless explicitly invalidated (e.g. after a completed job).
+    # Load the most-recent report from DB on first visit; subsequent reruns
+    # use this cached copy (no DB hit per rerun).  Invalidated in two places:
+    #   1. run_status=="done" handler → after a job completes.
+    #   2. Here, on fresh session / login.
     st.session_state["last_report"] = get_latest_report()
+if "nav_page" not in st.session_state:
+    st.session_state["nav_page"] = "📊 Dashboard"
 
 # ─── Password gate ────────────────────────────────────────────────────────────
 # Checked immediately after session state is ready — before CSS, DB, or any UI.
@@ -263,19 +267,24 @@ with st.sidebar:
     st.markdown("## 💊 Opdivo Surveillance")
     st.markdown("---")
 
+    _NAV_OPTIONS = [
+        "📊 Dashboard",
+        "🔬 Pipeline Tracker",
+        "✅ Verified Intelligence",
+        "📣 Social Noise",
+        "🤖 AI Insights",
+        "📅 Timeline",
+        "🌍 LR Markets",
+        "🕑 History",
+    ]
+    # Honour a programmatic navigation request (e.g. "View History" link)
+    if st.session_state.get("_goto_page"):
+        st.session_state["nav_page"] = st.session_state.pop("_goto_page")
     page = st.radio(
         "Navigation",
-        [
-            "📊 Dashboard",
-            "🔬 Pipeline Tracker",
-            "✅ Verified Intelligence",
-            "📣 Social Noise",
-            "🤖 AI Insights",
-            "📅 Timeline",
-            "🌍 LR Markets",
-            "🕑 History",
-        ],
+        _NAV_OPTIONS,
         label_visibility="collapsed",
+        key="nav_page",
     )
 
     st.markdown("---")
@@ -344,8 +353,8 @@ with st.sidebar:
         )
 
     elif run_status == "done":
-        # Job finished — pull the fresh report from DB, cache it, then rerun
-        # once so the dashboard immediately shows the new data.
+        # Job finished — pull the fresh (most-recent) report from DB, cache
+        # it, and rerun so the dashboard immediately shows the new data.
         st.session_state["last_report"] = get_latest_report()
         st.session_state["run_status"] = ""
         st.rerun()
@@ -522,7 +531,7 @@ if page == "📊 Dashboard":
         st.warning("No report found. Use the sidebar to run a new surveillance sweep.")
         st.stop()
 
-    # ── Cached-report info strip ────────────────────────────────────────────
+    # ── Latest-report info strip ────────────────────────────────────────────
     if latest:
         try:
             _rpt_age = datetime.now() - datetime.fromisoformat(latest.get("run_date", ""))
@@ -535,17 +544,24 @@ if page == "📊 Dashboard":
                 if _rpt_h >= 1 else "less than 1 hour ago"
             )
             _rpt_ts = latest.get("run_date", "")[:19].replace("T", " ")
-            st.markdown(
-                f'<div style="background:#1f2937;border:1px solid #374151;border-radius:8px;'
-                f'padding:9px 16px;margin-bottom:16px;font-size:0.82rem;color:#9ca3af;'
-                f'display:flex;align-items:center;gap:10px;">'
-                f'<span style="color:#00D4C8;font-size:1rem;">📋</span>'
-                f'Showing <b style="color:#d1d5db;">cached report</b> from '
-                f'<b style="color:#d1d5db;">{_rpt_ts}</b> &nbsp;·&nbsp; {_rpt_age_str}'
-                f'&nbsp;&nbsp;<span style="color:#4b5563;">|&nbsp; Run a new sweep to refresh.</span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+            _strip_col, _hist_col = st.columns([8, 1])
+            with _strip_col:
+                st.markdown(
+                    f'<div style="background:#1f2937;border:1px solid #374151;border-radius:8px;'
+                    f'padding:9px 16px;font-size:0.82rem;color:#9ca3af;line-height:1.7;">'
+                    f'<span style="color:#00D4C8;font-size:1rem;">📋</span>&nbsp;'
+                    f'Showing <b style="color:#d1d5db;">latest report</b> from '
+                    f'<b style="color:#f9fafb;">{_rpt_ts}</b>'
+                    f'&nbsp;<span style="color:#6b7280;">({_rpt_age_str})</span>'
+                    f'&nbsp;·&nbsp;<span style="color:#4b5563;">'
+                    f'Run a new sweep to refresh.</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with _hist_col:
+                if st.button("🕑 History", use_container_width=True, key="_dash_view_history"):
+                    st.session_state["_goto_page"] = "🕑 History"
+                    st.rerun()
         except Exception:
             pass
 
