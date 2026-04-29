@@ -498,22 +498,35 @@ def reconcile_job_state_from_agent() -> bool:
 
     _phase = _status.get("phase", "idle")
     _detail = _status.get("detail", "")
+    _result_ready = bool(_status.get("result_ready", False))
+    _expected_run_date = str(_status.get("expected_report_run_date", "") or "")
     _changed = False
 
     # If the worker reached finalizing, verify DB persistence before declaring done.
     if _phase in {"finalizing", "done"}:
         _start: datetime | None = st.session_state.get("job_start_time")
         _latest = get_latest_report()
-        _saved_ok = bool(_latest and _latest.get("run_date"))
-        if _saved_ok and _start is not None:
-            try:
-                _saved_at = datetime.fromisoformat(_latest["run_date"])
-                _saved_ok = _saved_at >= _start
-            except Exception:
-                _saved_ok = False
+        _saved_ok = False
+
+        if _latest and _latest.get("run_date"):
+            # Primary check: exact DB marker from the agent after save_report().
+            if _result_ready and _expected_run_date:
+                _saved_ok = str(_latest.get("run_date", "")) == _expected_run_date
+            else:
+                # Fallback for legacy/in-flight states.
+                _saved_ok = True
+                if _start is not None:
+                    try:
+                        _saved_at = datetime.fromisoformat(_latest["run_date"])
+                        _saved_ok = _saved_at >= _start
+                    except Exception:
+                        _saved_ok = False
 
         if _saved_ok:
-            st.session_state["last_report"] = _latest
+            # Always refresh cache with the just-saved DB row.
+            if st.session_state.get("last_report") != _latest:
+                st.session_state["last_report"] = _latest
+                _changed = True
             if st.session_state.get("surveillance_running"):
                 st.session_state["surveillance_running"] = False
                 _changed = True
