@@ -470,45 +470,82 @@ def sentiment_badge(sentiment: str) -> str:
 def run_surveillance_thread(use_batch: bool):
     """Runs the surveillance in a background thread so Streamlit doesn't block.
 
-    The surveillance_running flag is held True for the entire duration and
-    always released in the finally block — even on exception — so the button
-    can never get permanently stuck in a disabled state.
+    IMPORTANT: do not mutate Streamlit session state inside this worker thread.
+    Session updates can be lost across reruns when written off the script thread.
+    The main script reconciles completion/error state from agent status + DB.
     """
     import agent as _agent
-    _start_time: datetime | None = st.session_state.get("job_start_time")
 
     try:
         _agent.run_surveillance(use_batch=use_batch)
+    except Exception as exc:
+        try:
+            _agent.mark_job_error(str(exc))
+        except Exception:
+            pass
 
-        # Completion is only valid when the newly generated report is persisted
-        # and queryable from the DB.
+
+def reconcile_job_state_from_agent() -> bool:
+    """Synchronise UI/session state with agent status in the main script thread.
+
+    Returns True when state was changed and an immediate rerun is recommended.
+    """
+    try:
+        import agent as _agent
+        _status = _agent.get_status_snapshot()
+    except Exception:
+        return False
+
+    _phase = _status.get("phase", "idle")
+    _detail = _status.get("detail", "")
+    _changed = False
+
+    # If the worker reached finalizing, verify DB persistence before declaring done.
+    if _phase in {"finalizing", "done"}:
+        _start: datetime | None = st.session_state.get("job_start_time")
         _latest = get_latest_report()
         _saved_ok = bool(_latest and _latest.get("run_date"))
-        if _saved_ok and _start_time is not None:
+        if _saved_ok and _start is not None:
             try:
                 _saved_at = datetime.fromisoformat(_latest["run_date"])
-                _saved_ok = _saved_at >= _start_time
+                _saved_ok = _saved_at >= _start
             except Exception:
                 _saved_ok = False
 
         if _saved_ok:
             st.session_state["last_report"] = _latest
-            st.session_state["run_status"] = "done"
-            _agent.mark_job_complete("Complete ✓ — Report saved and ready")
-        else:
-            st.session_state["run_status"] = (
-                "error: Job finished but the report is not yet available in the database"
-            )
-            _agent.mark_job_error("Run finished but DB verification failed")
-    except Exception as exc:
-        st.session_state["run_status"] = f"error: {exc}"
-        try:
-            _agent.mark_job_error(str(exc))
-        except Exception:
-            pass
-    finally:
-        st.session_state["surveillance_running"] = False
-        st.session_state["job_start_time"] = None
+            if st.session_state.get("surveillance_running"):
+                st.session_state["surveillance_running"] = False
+                _changed = True
+            if st.session_state.get("job_start_time") is not None:
+                st.session_state["job_start_time"] = None
+                _changed = True
+            if st.session_state.get("run_status") != "done":
+                st.session_state["run_status"] = "done"
+                _changed = True
+
+            # Publish terminal done only after DB verification succeeded.
+            if _phase != "done":
+                _agent.mark_job_complete("Complete ✓ — Report saved and ready")
+
+    # Terminal error from worker thread: unblock UI immediately.
+    if _phase == "error":
+        if st.session_state.get("surveillance_running"):
+            st.session_state["surveillance_running"] = False
+            _changed = True
+        if st.session_state.get("job_start_time") is not None:
+            st.session_state["job_start_time"] = None
+            _changed = True
+        _msg = f"error: {_detail}" if _detail else "error: Surveillance run failed"
+        if st.session_state.get("run_status") != _msg:
+            st.session_state["run_status"] = _msg
+            _changed = True
+
+    return _changed
+
+
+if reconcile_job_state_from_agent():
+    st.rerun()
 
 
 # (Session state and password gate have already run at the top of the file.)
