@@ -1316,25 +1316,106 @@ elif page == "🤖 AI Insights":
     st.markdown("---")
     st.subheader("Competitive Risk Heatmap")
 
-    if companies:
-        heat_df = pd.DataFrame({
-            "Company": [c["company"] for c in companies],
-            "Launch Probability (%)": [c.get("probability", 0) for c in companies],
-        }).set_index("Company")
+    if not companies:
+        st.info("No risk data available yet. Run a new surveillance sweep.")
+    else:
+        my_threats = data.get("my_markets_threat", []) if data else []
 
-        fig_heat = px.imshow(
-            heat_df.T,
-            color_continuous_scale=[[0, "#7f1d1d"], [0.5, "#78350f"], [1, "#065f46"]],
-            aspect="auto",
-            template="plotly_dark",
-            labels={"color": "Probability (%)"},
-        )
-        fig_heat.update_layout(
-            paper_bgcolor="#111827",
-            plot_bgcolor="#1f2937",
-            height=160,
-        )
-        st.plotly_chart(fig_heat, use_container_width=True)
+        def _clamp(v: int | float, lo: int = 0, hi: int = 100) -> int:
+            try:
+                return max(lo, min(hi, int(v)))
+            except Exception:
+                return lo
+
+        def _phase_risk_score(phase: str) -> int:
+            p = (phase or "").lower()
+            if "launch" in p:
+                return 95
+            if "approved" in p:
+                return 80
+            if "bla" in p or "file" in p or "submitted" in p:
+                return 70
+            if "phase iii" in p or "phase 3" in p:
+                return 60
+            if "phase ii" in p or "phase 2" in p:
+                return 45
+            if "phase i" in p or "phase 1" in p:
+                return 30
+            if "pre" in p:
+                return 15
+            return 35
+
+        def _lr_risk_score(company_name: str, probability: int) -> int:
+            risk_map = {"low": 25, "medium": 60, "high": 90}
+            key = (company_name or "").lower().split()[0] if company_name else ""
+            matched_scores: list[int] = []
+            for t in my_threats:
+                competitor = str(t.get("competitor", "")).lower()
+                if key and key in competitor:
+                    level = str(t.get("risk_level", "")).strip().lower()
+                    matched_scores.append(risk_map.get(level, 50))
+
+            # Use explicit LR threat risk when available; fallback to weighted proxy.
+            if matched_scores:
+                return max(matched_scores)
+            return _clamp(round(probability * 0.7 + 20), 15, 85)
+
+        records: list[dict] = []
+        for c in companies:
+            company = c.get("company", "Unknown")
+            prob = _clamp(c.get("probability", 0))
+            lr_risk = _lr_risk_score(company, prob)
+            phase_risk = _phase_risk_score(c.get("phase", ""))
+            records.append(
+                {
+                    "Company": company,
+                    "Probability Risk": prob,
+                    "Risk to LR Markets": lr_risk,
+                    "Phase Risk": phase_risk,
+                }
+            )
+
+        risk_df = pd.DataFrame(records)
+        if risk_df.empty:
+            st.info("No risk data available yet. Run a new surveillance sweep.")
+        else:
+            # Prioritise highest-risk companies at the top.
+            risk_df["_rank"] = risk_df[["Probability Risk", "Risk to LR Markets", "Phase Risk"]].max(axis=1)
+            risk_df = risk_df.sort_values("_rank", ascending=False).drop(columns=["_rank"])
+
+            z = risk_df[["Probability Risk", "Risk to LR Markets", "Phase Risk"]].values
+            fig_heat = go.Figure(
+                data=go.Heatmap(
+                    z=z,
+                    x=["Probability", "Risk to LR Markets", "Phase Risk"],
+                    y=risk_df["Company"].tolist(),
+                    zmin=0,
+                    zmax=100,
+                    colorscale=[
+                        [0.0, "#10b981"],   # Low = green
+                        [0.5, "#f59e0b"],   # Medium = amber
+                        [1.0, "#ef4444"],   # High = red
+                    ],
+                    colorbar=dict(
+                        title="Risk",
+                        tickvals=[20, 50, 85],
+                        ticktext=["Low", "Medium", "High"],
+                    ),
+                    hovertemplate=(
+                        "<b>%{y}</b><br>"
+                        "%{x}: %{z:.0f}<extra></extra>"
+                    ),
+                )
+            )
+            fig_heat.update_layout(
+                template="plotly_dark",
+                paper_bgcolor="#111827",
+                plot_bgcolor="#1f2937",
+                margin=dict(t=10, b=10, l=10, r=10),
+                height=max(280, 42 * len(risk_df)),
+                yaxis=dict(autorange="reversed"),
+            )
+            st.plotly_chart(fig_heat, use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
