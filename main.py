@@ -134,7 +134,7 @@ if not st.session_state["authenticated"]:
         <p style="color:#6b7280;font-size:0.82rem;margin:0 0 6px 0;
                   letter-spacing:0.04em;text-transform:uppercase;">biosimintel.com</p>
         <p style="color:#9ca3af;font-size:0.88rem;margin:0 0 24px 0;line-height:1.5;">
-          Restricted access &mdash; authorised BMS personnel only.
+          Restricted Access — Enter Access Code to Continue
         </p>
       </div>
     </div>
@@ -751,7 +751,7 @@ if st.session_state["surveillance_running"]:
 # ══════════════════════════════════════════════════════════════════════════════
 if page == "📊 Dashboard":
     st.title("📊 Dashboard Overview")
-    st.caption("Opdivo (nivolumab) biosimilar competitive intelligence — powered by Grok AI")
+    st.caption("Opdivo (nivolumab) biosimilar competitive intelligence — Powered by AI")
 
     if not data:
         st.warning("No report found. Use the sidebar to run a new surveillance sweep.")
@@ -1197,7 +1197,7 @@ elif page == "🤖 AI Insights":
     st.info(exec_summary or "—")
 
     st.markdown("---")
-    st.subheader("Grok's Deep Reasoning")
+    st.subheader("AI Deep Reasoning")
     st.markdown(ai_insights or "No AI insights available in this report.", unsafe_allow_html=False)
 
     st.markdown("---")
