@@ -649,11 +649,13 @@ if st.session_state["surveillance_running"]:
     else:
         _elapsed_str = "just started"
 
+    import time as _time
+
     _use_batch = "Batch" in st.session_state.get("run_mode_select", "Batch")
-    _eta = "30 minutes to a few hours" if _use_batch else "5 – 20 minutes"
-    _mode_label = "Grok Batch API (50% cheaper)" if _use_batch else "Synchronous API"
+    _eta = "15 – 90 minutes" if _use_batch else "5 – 20 minutes"
+    _mode_label = "Batch API (50% cheaper)" if _use_batch else "Synchronous API"
     _close_note = (
-        "You can safely close this tab — the job runs in the background."
+        "You can safely close this tab — the job runs in the background and the dashboard will update automatically when ready."
         if _use_batch
         else "Keep this tab open until the job finishes."
     )
@@ -670,11 +672,11 @@ if st.session_state["surveillance_running"]:
     _PHASE_LABELS = {
         "idle":        "Waiting to start",
         "starting":    "Initialising…",
-        "connecting":  "Connecting to Grok…",
+        "connecting":  "Connecting to AI…",
         "submitting":  "Submitting batch job…",
-        "queued":      "Job queued — waiting for Grok",
-        "waiting":     "Waiting for Grok response…",
-        "polling":     "Polling batch — waiting for completion…",
+        "queued":      "Job queued — awaiting processing",
+        "waiting":     "Waiting for AI response…",
+        "polling":     "Polling batch — awaiting completion…",
         "retrieving":  "Downloading results…",
         "received":    "Response received — parsing…",
         "parsing":     "Parsing JSON response…",
@@ -688,57 +690,85 @@ if st.session_state["surveillance_running"]:
     else:
         _status_line = _phase_display
 
+    # ── Cycling informative messages (rotate every 10 seconds) ──────────────
+    _CYCLE_MSGS = [
+        ("🔬", "Analyzing global biosimilar pipeline data…"),
+        ("📋", "Scanning regulatory filings across LR markets…"),
+        ("🌍", "Evaluating threats in your priority countries…"),
+        ("📅", "Assessing launch probabilities and timelines…"),
+        ("📊", "Compiling actionable insights for Operations teams…"),
+        ("🧬", "Cross-referencing clinical trial data…"),
+        ("📡", "Monitoring social and market sentiment…"),
+        ("🏭", "Mapping biosimilar manufacturing landscapes…"),
+        ("⚖️",  "Reviewing patent expiry and litigation signals…"),
+        ("📈", "Benchmarking competitive pricing intelligence…"),
+    ]
+    _cycle_idx   = int(_time.time() // 10) % len(_CYCLE_MSGS)
+    _cycle_icon, _cycle_msg = _CYCLE_MSGS[_cycle_idx]
+
     st.markdown(
         f"""
 <div style="
-  background: linear-gradient(135deg,#0f2027,#1a3a2a);
+  background: linear-gradient(160deg,#0d1f1a 0%,#0f2d22 60%,#0d1f1a 100%);
   border: 2px solid #16a34a;
-  border-radius: 16px;
-  padding: 36px 40px;
-  margin-bottom: 28px;
-  box-shadow: 0 4px 32px rgba(0,212,150,0.15);
+  border-radius: 20px;
+  padding: 44px 48px 36px;
+  margin-bottom: 32px;
+  box-shadow: 0 8px 48px rgba(22,163,74,0.18), 0 2px 8px rgba(0,0,0,0.5);
 ">
-  <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
-    <div style="font-size:2.4rem;line-height:1;">⚙️</div>
+
+  <!-- Header -->
+  <div style="display:flex;align-items:flex-start;gap:18px;margin-bottom:28px;">
+    <div style="font-size:2.8rem;line-height:1;flex-shrink:0;">🛰️</div>
     <div>
-      <div style="color:#4ade80;font-size:1.35rem;font-weight:800;letter-spacing:-0.01em;">
-        Surveillance job is running in the background…
+      <div style="color:#4ade80;font-size:1.5rem;font-weight:800;letter-spacing:-0.02em;line-height:1.2;">
+        Surveillance Job Running
       </div>
-      <div style="color:#86efac;font-size:0.88rem;margin-top:3px;">
-        Mode: <b>{_mode_label}</b>
+      <div style="color:#86efac;font-size:0.92rem;margin-top:6px;">
+        Mode: <b style="color:#a7f3d0;">{_mode_label}</b>
+        &nbsp;·&nbsp; This Batch job uses AI and typically takes <b style="color:#a7f3d0;">{_eta}</b>.
       </div>
     </div>
   </div>
 
-  <div class="banner-grid">
-    <div style="background:#14532d44;border:1px solid #166534;border-radius:10px;padding:14px 18px;">
-      <div style="color:#86efac;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;">⏱ Elapsed</div>
-      <div style="color:#f0fdf4;font-size:1.4rem;font-weight:700;">{_elapsed_str}</div>
+  <!-- Stats grid -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px;">
+    <div style="background:rgba(20,83,45,0.35);border:1px solid #166534;border-radius:12px;padding:18px 20px;">
+      <div style="color:#86efac;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.09em;margin-bottom:6px;">⏱ Job Running For</div>
+      <div style="color:#f0fdf4;font-size:1.75rem;font-weight:800;letter-spacing:-0.02em;">{_elapsed_str}</div>
     </div>
-    <div style="background:#14532d44;border:1px solid #166534;border-radius:10px;padding:14px 18px;">
-      <div style="color:#86efac;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;">⏳ Estimated Duration</div>
-      <div style="color:#f0fdf4;font-size:1rem;font-weight:600;">{_eta}</div>
+    <div style="background:rgba(20,83,45,0.35);border:1px solid #166534;border-radius:12px;padding:18px 20px;">
+      <div style="color:#86efac;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.09em;margin-bottom:6px;">⏳ Estimated Duration</div>
+      <div style="color:#f0fdf4;font-size:1.1rem;font-weight:700;">{_eta}</div>
     </div>
-    <div style="background:#14532d44;border:1px solid #166534;border-radius:10px;padding:14px 18px;">
-      <div style="color:#86efac;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;">📡 Status</div>
-      <div style="color:#4ade80;font-size:0.9rem;font-weight:600;">{_status_line}</div>
+    <div style="background:rgba(20,83,45,0.35);border:1px solid #166534;border-radius:12px;padding:18px 20px;">
+      <div style="color:#86efac;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.09em;margin-bottom:6px;">📡 Current Phase</div>
+      <div style="color:#4ade80;font-size:0.88rem;font-weight:600;line-height:1.4;">{_status_line}</div>
     </div>
   </div>
 
-  <div style="background:#052e16;border:1px solid #166534;border-radius:8px;padding:12px 16px;
-              color:#bbf7d0;font-size:0.88rem;line-height:1.7;">
-    💡 <b>{_close_note}</b><br>
-    🔄 This page auto-refreshes every 30 seconds. New results will appear automatically when ready.<br>
-    🚫 The <b>Run Now</b> button is locked until this job completes.
+  <!-- Cycling activity message -->
+  <div style="background:rgba(5,46,22,0.7);border:1px solid #15803d;border-radius:12px;
+              padding:18px 22px;margin-bottom:18px;display:flex;align-items:center;gap:14px;">
+    <div style="font-size:1.7rem;flex-shrink:0;">{_cycle_icon}</div>
+    <div>
+      <div style="color:#bbf7d0;font-size:1.0rem;font-weight:600;">{_cycle_msg}</div>
+      <div style="color:#6ee7b7;font-size:0.78rem;margin-top:3px;">Processing step {_cycle_idx + 1} of {len(_CYCLE_MSGS)} · updates every 10 seconds</div>
+    </div>
   </div>
+
+  <!-- Info footer -->
+  <div style="background:rgba(17,24,39,0.6);border:1px solid #374151;border-radius:10px;
+              padding:14px 18px;color:#9ca3af;font-size:0.86rem;line-height:1.8;">
+    <span style="color:#6ee7b7;">💡</span> <b style="color:#d1fae5;">{_close_note}</b><br>
+    <span style="color:#6ee7b7;">🔄</span> This page auto-refreshes every 30 seconds — new results appear automatically when ready.<br>
+    <span style="color:#6ee7b7;">🚫</span> The <b style="color:#d1fae5;">Run Now</b> button is locked until this job completes.
+  </div>
+
 </div>
 """,
         unsafe_allow_html=True,
     )
-
-    # Indeterminate spinner — no fake % that misleads users
-    import time as _time
-    st.info(f"⏳ {_phase_display}  ·  Page auto-refreshes every 30 s", icon=None)
 
     # 30-second sleep then rerun (keeps session alive, no browser reload)
     _time.sleep(30)
