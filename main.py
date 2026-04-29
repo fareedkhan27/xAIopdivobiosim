@@ -67,6 +67,8 @@ if "run_status" not in st.session_state:
     st.session_state["run_status"] = ""
 if "job_start_time" not in st.session_state:
     st.session_state["job_start_time"] = None
+if "active_job_token" not in st.session_state:
+    st.session_state["active_job_token"] = ""
 if "last_report" not in st.session_state:
     # Load the most-recent report from DB on first visit; subsequent reruns
     # use this cached copy (no DB hit per rerun).  Invalidated in two places:
@@ -467,7 +469,7 @@ def sentiment_badge(sentiment: str) -> str:
     return '<span class="badge-neu">🟠 Neutral</span>'
 
 
-def run_surveillance_thread(use_batch: bool):
+def run_surveillance_thread(use_batch: bool, job_token: str):
     """Runs the surveillance in a background thread so Streamlit doesn't block.
 
     IMPORTANT: do not mutate Streamlit session state inside this worker thread.
@@ -477,7 +479,7 @@ def run_surveillance_thread(use_batch: bool):
     import agent as _agent
 
     try:
-        _agent.run_surveillance(use_batch=use_batch)
+        _agent.run_surveillance(use_batch=use_batch, run_token=job_token)
     except Exception as exc:
         try:
             _agent.mark_job_error(str(exc))
@@ -498,9 +500,15 @@ def reconcile_job_state_from_agent() -> bool:
 
     _phase = _status.get("phase", "idle")
     _detail = _status.get("detail", "")
+    _run_token = str(_status.get("run_token", "") or "")
     _result_ready = bool(_status.get("result_ready", False))
     _expected_run_date = str(_status.get("expected_report_run_date", "") or "")
+    _active_job_token = str(st.session_state.get("active_job_token", "") or "")
     _changed = False
+
+    # Ignore terminal states from an old run; only reconcile the active job.
+    if _active_job_token and _run_token and _run_token != _active_job_token:
+        return False
 
     # If the worker reached finalizing, verify DB persistence before declaring done.
     if _phase in {"finalizing", "done"}:
@@ -533,8 +541,11 @@ def reconcile_job_state_from_agent() -> bool:
             if st.session_state.get("job_start_time") is not None:
                 st.session_state["job_start_time"] = None
                 _changed = True
-            if st.session_state.get("run_status") != "done":
-                st.session_state["run_status"] = "done"
+            if st.session_state.get("run_status") != "":
+                st.session_state["run_status"] = ""
+                _changed = True
+            if st.session_state.get("active_job_token"):
+                st.session_state["active_job_token"] = ""
                 _changed = True
 
             # Publish terminal done only after DB verification succeeded.
@@ -552,6 +563,9 @@ def reconcile_job_state_from_agent() -> bool:
         _msg = f"error: {_detail}" if _detail else "error: Surveillance run failed"
         if st.session_state.get("run_status") != _msg:
             st.session_state["run_status"] = _msg
+            _changed = True
+        if st.session_state.get("active_job_token"):
+            st.session_state["active_job_token"] = ""
             _changed = True
 
     return _changed
@@ -618,12 +632,14 @@ with st.sidebar:
             st.warning("⚠️ A job is already running — please wait for it to finish.")
         else:
             # Acquire the lock before spawning the thread
+            _job_token = datetime.now().isoformat()
             st.session_state["surveillance_running"] = True
             st.session_state["run_status"] = "running"
-            st.session_state["job_start_time"] = datetime.now()
+            st.session_state["job_start_time"] = datetime.fromisoformat(_job_token)
+            st.session_state["active_job_token"] = _job_token
             t = threading.Thread(
                 target=run_surveillance_thread,
-                args=(use_batch,),
+                args=(use_batch, _job_token),
                 daemon=True,
             )
             t.start()
@@ -654,12 +670,6 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
-    elif run_status == "done":
-        # Job finished — pull the fresh (most-recent) report from DB, cache
-        # it, and rerun so the dashboard immediately shows the new data.
-        st.session_state["last_report"] = get_latest_report()
-        st.session_state["run_status"] = ""
-        st.rerun()
     elif run_status.startswith("error"):
         st.error(f"❌ {run_status}")
         st.session_state["run_status"] = ""
@@ -853,8 +863,9 @@ if st.session_state["surveillance_running"]:
         unsafe_allow_html=True,
     )
 
-    # 30-second sleep then rerun (keeps session alive, no browser reload)
-    _time.sleep(30)
+    # Short polling interval keeps the UI responsive when the background job
+    # completes and lets the main script consume the freshly saved report.
+    _time.sleep(5)
     st.rerun()
 
 # ─── Page routing ─────────────────────────────────────────────────────────────

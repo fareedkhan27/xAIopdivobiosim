@@ -313,7 +313,7 @@ def parse_grok_response(raw_text: str) -> dict:
 # Main orchestration
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_surveillance(use_batch: bool = True) -> dict:
+def run_surveillance(use_batch: bool = True, run_token: str | None = None) -> dict:
     """
     Full pipeline:
       1. Submit Batch job (or sync call)
@@ -324,7 +324,7 @@ def run_surveillance(use_batch: bool = True) -> dict:
     """
     mode_label = "BATCH" if use_batch else "SYNC"
     t_start = datetime.now()
-    run_token = t_start.isoformat()
+    run_token = run_token or t_start.isoformat()
     log.info("=== Surveillance START [mode=%s] at %s ===", mode_label, t_start.isoformat())
     _set_status(
         "starting",
