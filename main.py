@@ -85,11 +85,19 @@ if not st.session_state["authenticated"]:
     # full stylesheet hasn't loaded yet.
     st.markdown("""
     <style>
-    html, body, [class*="css"] {
+    html, body {
         background-color: #111827 !important;
-        color: #f3f4f6 !important;
+        color: #e5e7eb !important;
         font-family: 'Inter', 'Segoe UI', sans-serif;
     }
+    [data-testid="stApp"],
+    [data-testid="stAppViewContainer"],
+    .stApp, .appview-container, .main, .block-container {
+        background-color: #111827 !important;
+        color: #e5e7eb !important;
+    }
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] span { color: #e5e7eb !important; }
     /* Mobile: remove Streamlit's default side padding so login card fills screen */
     .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
     .stButton > button {
@@ -99,12 +107,15 @@ if not st.session_state["authenticated"]:
         border-radius: 8px !important;
         border: none !important;
         width: 100% !important;
-        min-height: 48px !important;  /* iOS tap target */
+        min-height: 48px !important;
     }
     /* Make text inputs tappable on iOS */
     input[type="password"], input[type="text"] {
-        font-size: 16px !important;  /* prevents iOS auto-zoom on focus */
+        font-size: 16px !important;
         min-height: 44px !important;
+        background-color: #1f2937 !important;
+        color: #e5e7eb !important;
+        border-color: #374151 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -159,81 +170,187 @@ if not st.session_state["authenticated"]:
 st.markdown("""
 <style>
 /* ════════════════════════════════════════════════════════
-   BASE  (applies to all screen sizes)
+   RESET & BASE — force dark bg + light text everywhere
+   Modern Streamlit uses data-testid selectors; [class*="css"]
+   is unreliable in 1.30+, so we target every layer explicitly.
    ════════════════════════════════════════════════════════ */
-html, body, [class*="css"] {
+html, body {
     background-color: #111827 !important;
-    color: #f3f4f6 !important;
-    font-family: 'Inter', 'Segoe UI', sans-serif;
+    color: #e5e7eb !important;
+    font-family: 'Inter', 'Segoe UI', sans-serif !important;
 }
 
-/* Streamlit main container — tighter horizontal padding on mobile */
+/* Streamlit root app shell */
+[data-testid="stApp"],
+[data-testid="stAppViewContainer"],
+[data-testid="stAppViewBlockContainer"],
+.stApp, .appview-container, .main {
+    background-color: #111827 !important;
+    color: #e5e7eb !important;
+}
+
+/* Every generic element inside the app */
+[data-testid="stApp"] p,
+[data-testid="stApp"] span,
+[data-testid="stApp"] div,
+[data-testid="stApp"] li,
+[data-testid="stApp"] td,
+[data-testid="stApp"] th,
+[data-testid="stApp"] label {
+    color: #e5e7eb !important;
+}
+
+/* Markdown containers */
+[data-testid="stMarkdownContainer"],
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] span,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] a {
+    color: #e5e7eb !important;
+}
+
+/* Caption / helper text */
+[data-testid="stCaptionContainer"],
+[data-testid="stCaptionContainer"] p {
+    color: #9ca3af !important;
+}
+
+/* Streamlit main container — responsive horizontal padding */
 .block-container {
     padding-top: 1.5rem !important;
     padding-left: clamp(0.75rem, 3vw, 3rem) !important;
     padding-right: clamp(0.75rem, 3vw, 3rem) !important;
     max-width: 100% !important;
+    background-color: #111827 !important;
 }
 
 /* ---- Sidebar ---- */
-section[data-testid="stSidebar"] {
+section[data-testid="stSidebar"],
+section[data-testid="stSidebar"] > div {
     background-color: #1f2937 !important;
     border-right: 1px solid #374151;
 }
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] div,
+section[data-testid="stSidebar"] label {
+    color: #e5e7eb !important;
+}
+/* Radio items in sidebar */
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color: #e5e7eb !important; }
+[data-testid="stSidebarNav"] span { color: #e5e7eb !important; }
 
-/* ---- KPI cards — stack on mobile, row on wider screens ---- */
+/* ---- Form labels / selectbox labels ---- */
+[data-testid="stSelectbox"] label,
+[data-testid="stMultiSelect"] label,
+[data-testid="stTextInput"] label,
+[data-testid="stRadio"] label,
+[data-testid="stCheckbox"] label,
+.stSelectbox label, .stMultiSelect label {
+    color: #d1d5db !important;
+    font-weight: 500;
+}
+
+/* ---- Selectbox / multiselect dropdown text ---- */
+[data-baseweb="select"] [data-testid="stMarkdownContainer"],
+[data-baseweb="select"] span,
+[data-baseweb="select"] div,
+[data-baseweb="tag"] span {
+    color: #e5e7eb !important;
+    background-color: #1f2937 !important;
+}
+[data-baseweb="menu"] { background-color: #1f2937 !important; }
+[data-baseweb="menu"] li { color: #e5e7eb !important; background-color: #1f2937 !important; }
+[data-baseweb="menu"] li:hover { background-color: #374151 !important; }
+
+/* ---- Input fields ---- */
+[data-baseweb="input"] input,
+[data-baseweb="input"] textarea,
+[data-testid="stTextInput"] input {
+    background-color: #1f2937 !important;
+    color: #e5e7eb !important;
+    border-color: #374151 !important;
+    font-size: 16px !important;   /* prevents iOS auto-zoom */
+    min-height: 44px !important;
+}
+
+/* ---- st.info / st.warning / st.error / st.success boxes ---- */
+[data-testid="stAlert"],
+[data-testid="stAlert"] p,
+[data-testid="stAlert"] span,
+[data-testid="stAlert"] div {
+    color: #e5e7eb !important;
+}
+/* Info box specifically */
+[data-testid="stAlert"][kind="info"],
+.stAlert[data-baseweb="notification"][kind="info"] {
+    background-color: #1e3a5f !important;
+    border-color: #3b82f6 !important;
+}
+
+/* ---- KPI cards ---- */
 .kpi-card {
-    background: #1f2937;
+    background: #1f2937 !important;
     border: 1px solid #374151;
     border-radius: 12px;
     padding: clamp(12px, 3vw, 20px) clamp(10px, 3vw, 24px);
     text-align: center;
-    min-width: 0;          /* allow shrink in flex/grid */
+    min-width: 0;
     word-break: break-word;
+    color: #e5e7eb !important;
 }
 .kpi-value {
-    font-size: clamp(1.4rem, 4vw, 2.2rem);
-    font-weight: 700;
-    color: #00D4C8;
+    font-size: clamp(1.4rem, 4vw, 2.2rem) !important;
+    font-weight: 700 !important;
+    color: #00D4C8 !important;
     line-height: 1.2;
 }
-.kpi-label { font-size: clamp(0.72rem, 2vw, 0.85rem); color: #9ca3af; margin-top: 4px; }
+.kpi-label {
+    font-size: clamp(0.72rem, 2vw, 0.85rem) !important;
+    color: #9ca3af !important;
+    margin-top: 4px;
+}
 
-/* ---- Update cards ---- */
+/* ---- Update / Verified Intelligence cards ---- */
 .update-card {
-    background: #1f2937;
+    background: #1f2937 !important;
     border-left: 4px solid #00D4C8;
     border-radius: 8px;
     padding: 14px 16px;
     margin-bottom: 12px;
     word-break: break-word;
+    color: #e5e7eb !important;
 }
-.update-card .source { font-size: 0.78rem; color: #9ca3af; }
-.update-card .title  { font-weight: 600; margin: 4px 0; color: #f3f4f6; }
-.update-card .body   { font-size: 0.9rem; color: #d1d5db; }
+.update-card .source { font-size: 0.78rem; color: #9ca3af !important; }
+.update-card .title  { font-weight: 600; margin: 4px 0; color: #f9fafb !important; }
+.update-card .body   { font-size: 0.9rem; color: #d1d5db !important; }
 
 /* ---- Social post cards ---- */
 .post-card {
-    background: #1f2937;
+    background: #1f2937 !important;
     border: 1px solid #374151;
     border-radius: 10px;
     padding: 12px 14px;
     margin-bottom: 10px;
     word-break: break-word;
+    color: #e5e7eb !important;
 }
-.post-card .user  { font-weight: 600; color: #3B82F6; }
-.post-card .time  { font-size: 0.78rem; color: #6b7280; margin-left: 8px; }
-.post-card .text  { margin-top: 8px; font-size: 0.9rem; }
+.post-card .user  { font-weight: 600; color: #60a5fa !important; }
+.post-card .time  { font-size: 0.78rem; color: #6b7280 !important; margin-left: 8px; }
+.post-card .text  { margin-top: 8px; font-size: 0.9rem; color: #e5e7eb !important; }
 
 /* ---- Badges ---- */
-.badge-pos { background:#065f46; color:#6ee7b7; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
-.badge-neu { background:#3b3a1e; color:#fde68a; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
-.badge-neg { background:#7f1d1d; color:#fca5a5; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
+.badge-pos { background:#065f46 !important; color:#6ee7b7 !important; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
+.badge-neu { background:#3b3a1e !important; color:#fde68a !important; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
+.badge-neg { background:#7f1d1d !important; color:#fca5a5 !important; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
 
 /* ---- Headings ---- */
-h1 { font-size: clamp(1.4rem, 5vw, 2rem) !important; color: #f9fafb !important; }
-h2 { font-size: clamp(1.1rem, 4vw, 1.5rem) !important; color: #f9fafb !important; }
-h3 { font-size: clamp(1rem, 3vw, 1.25rem) !important; color: #f9fafb !important; }
+h1, h2, h3, h4, h5, h6 {
+    color: #f9fafb !important;
+}
+h1 { font-size: clamp(1.4rem, 5vw, 2rem) !important; }
+h2 { font-size: clamp(1.1rem, 4vw, 1.5rem) !important; }
+h3 { font-size: clamp(1rem, 3vw, 1.25rem) !important; }
 
 /* ---- Buttons — minimum 44px touch target (Apple HIG) ---- */
 .stButton > button {
@@ -247,25 +364,28 @@ h3 { font-size: clamp(1rem, 3vw, 1.25rem) !important; color: #f9fafb !important;
 }
 .stButton > button:hover { background: #00b8ae !important; }
 
-/* ---- Inputs — font-size 16px prevents iOS auto-zoom ---- */
-input, textarea, select,
-[data-baseweb="input"] input,
-[data-baseweb="textarea"] textarea {
-    font-size: 16px !important;
-    min-height: 44px !important;
-}
-
-/* ---- Dataframe — horizontal scroll on mobile ---- */
+/* ---- Dataframe — force readable text and dark bg ---- */
 .stDataFrame {
     border-radius: 8px;
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
 }
-.stDataFrame > div { min-width: 0 !important; }
+.stDataFrame table { background-color: #1f2937 !important; }
+.stDataFrame th {
+    background-color: #111827 !important;
+    color: #f9fafb !important;
+    border-bottom: 1px solid #374151 !important;
+}
+.stDataFrame td {
+    background-color: #1f2937 !important;
+    color: #e5e7eb !important;
+    border-color: #374151 !important;
+}
+[data-testid="stDataFrame"] * { color: #e5e7eb !important; }
 
 /* ---- Tabs — scrollable on mobile ---- */
 .stTabs [data-baseweb="tab-list"] {
-    background: #1f2937;
+    background: #1f2937 !important;
     border-radius: 8px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -278,9 +398,12 @@ input, textarea, select,
     padding: 8px 12px !important;
     font-size: clamp(0.78rem, 2vw, 0.9rem) !important;
 }
-.stTabs [aria-selected="true"] { color: #00D4C8 !important; border-bottom-color: #00D4C8 !important; }
+.stTabs [aria-selected="true"] {
+    color: #00D4C8 !important;
+    border-bottom-color: #00D4C8 !important;
+}
 
-/* ---- Plotly charts — don't overflow ---- */
+/* ---- Plotly charts ---- */
 .js-plotly-plot, .plotly { max-width: 100% !important; }
 
 /* ---- Progress banner grid — stack on mobile ---- */
@@ -292,40 +415,20 @@ input, textarea, select,
 }
 
 /* ════════════════════════════════════════════════════════
-   MOBILE  (≤ 640 px — iPhone SE through iPhone 16 Pro Max)
+   MOBILE  (≤ 640 px)
    ════════════════════════════════════════════════════════ */
 @media (max-width: 640px) {
-    /* Remove all horizontal margin/padding that causes overflow */
     .block-container {
         padding-left: 0.6rem !important;
         padding-right: 0.6rem !important;
         padding-top: 0.75rem !important;
     }
-
-    /* Hide default Streamlit padding wrapper */
-    .css-1d391kg, .css-18e3th9 { padding: 0 !important; }
-
-    /* KPI value smaller on phone */
-    .kpi-value { font-size: 1.5rem; }
-    .kpi-label { font-size: 0.72rem; }
+    .kpi-value { font-size: 1.5rem !important; }
+    .kpi-label { font-size: 0.72rem !important; }
     .kpi-card  { padding: 10px 8px; border-radius: 8px; }
-
-    /* Banner grid stacks to 1 col on phone */
     .banner-grid { grid-template-columns: 1fr !important; }
-
-    /* Sidebar toggle button — make it bigger */
-    button[kind="header"] { min-height: 48px !important; min-width: 48px !important; }
-
-    /* Full-width select boxes and radios */
     .stSelectbox, .stRadio { width: 100% !important; }
-
-    /* Plotly — prevent overflow */
     .js-plotly-plot .main-svg { width: 100% !important; }
-
-    /* Info strips — allow wrap */
-    div[style*="display:flex"] { flex-wrap: wrap !important; }
-
-    /* Reduce font sizes for prose */
     p, li, td, th { font-size: 0.88rem !important; }
 }
 
@@ -333,7 +436,7 @@ input, textarea, select,
    SMALL TABLET  (641 px – 900 px)
    ════════════════════════════════════════════════════════ */
 @media (min-width: 641px) and (max-width: 900px) {
-    .kpi-value { font-size: 1.7rem; }
+    .kpi-value { font-size: 1.7rem !important; }
     .block-container {
         padding-left: 1.25rem !important;
         padding-right: 1.25rem !important;
