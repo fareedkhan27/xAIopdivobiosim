@@ -22,6 +22,7 @@ Workflow:
 import json
 import logging
 import os
+import threading
 import time
 from datetime import datetime
 
@@ -61,13 +62,31 @@ BATCH_REQUEST_ID = "opdivo-surveillance-001"
 # Written by agent functions; read by main.py via agent.JOB_STATUS.
 # Keys: phase (str), detail (str)
 JOB_STATUS: dict = {"phase": "idle", "detail": ""}
+_JOB_STATUS_LOCK = threading.Lock()
 
 
 def _set_status(phase: str, detail: str = "") -> None:
     """Update the shared status dict and log the phase transition."""
-    JOB_STATUS["phase"] = phase
-    JOB_STATUS["detail"] = detail
+    with _JOB_STATUS_LOCK:
+        JOB_STATUS["phase"] = phase
+        JOB_STATUS["detail"] = detail
     log.info("[phase] %-15s  %s", phase, detail)
+
+
+def get_status_snapshot() -> dict:
+    """Return a thread-safe copy of the current job status."""
+    with _JOB_STATUS_LOCK:
+        return {"phase": JOB_STATUS.get("phase", "idle"), "detail": JOB_STATUS.get("detail", "")}
+
+
+def mark_job_complete(detail: str = "Complete ✓") -> None:
+    """Public helper for main thread to mark completion after external checks."""
+    _set_status("done", detail)
+
+
+def mark_job_error(detail: str) -> None:
+    """Public helper for main thread to publish a terminal error status."""
+    _set_status("error", detail)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -331,7 +350,7 @@ def run_surveillance(use_batch: bool = True) -> dict:
         "=== Surveillance COMPLETE [mode=%s] duration=%.1fs (%.1f min) at %s ===",
         mode_label, duration, duration / 60, t_end.isoformat(),
     )
-    _set_status("done", f"Completed in {duration:.0f}s")
+    _set_status("finalizing", f"Pipeline completed in {duration:.0f}s — verifying saved report")
     return data
 
 

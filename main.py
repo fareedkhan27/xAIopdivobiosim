@@ -475,11 +475,37 @@ def run_surveillance_thread(use_batch: bool):
     can never get permanently stuck in a disabled state.
     """
     import agent as _agent
+    _start_time: datetime | None = st.session_state.get("job_start_time")
+
     try:
         _agent.run_surveillance(use_batch=use_batch)
-        st.session_state["run_status"] = "done"
+
+        # Completion is only valid when the newly generated report is persisted
+        # and queryable from the DB.
+        _latest = get_latest_report()
+        _saved_ok = bool(_latest and _latest.get("run_date"))
+        if _saved_ok and _start_time is not None:
+            try:
+                _saved_at = datetime.fromisoformat(_latest["run_date"])
+                _saved_ok = _saved_at >= _start_time
+            except Exception:
+                _saved_ok = False
+
+        if _saved_ok:
+            st.session_state["last_report"] = _latest
+            st.session_state["run_status"] = "done"
+            _agent.mark_job_complete("Complete ✓ — Report saved and ready")
+        else:
+            st.session_state["run_status"] = (
+                "error: Job finished but the report is not yet available in the database"
+            )
+            _agent.mark_job_error("Run finished but DB verification failed")
     except Exception as exc:
         st.session_state["run_status"] = f"error: {exc}"
+        try:
+            _agent.mark_job_error(str(exc))
+        except Exception:
+            pass
     finally:
         st.session_state["surveillance_running"] = False
         st.session_state["job_start_time"] = None
@@ -660,14 +686,19 @@ if st.session_state["surveillance_running"]:
         else "Keep this tab open until the job finishes."
     )
 
-    # Read live phase from agent module (set by _set_status() in the worker thread)
+    # Read live phase from agent module (set by worker thread + completion verifier)
     try:
         import agent as _agent_mod
-        _job_phase   = _agent_mod.JOB_STATUS.get("phase", "running")
-        _job_detail  = _agent_mod.JOB_STATUS.get("detail", "")
+        _status      = _agent_mod.get_status_snapshot()
+        _job_phase   = _status.get("phase", "running")
+        _job_detail  = _status.get("detail", "")
     except Exception:
         _job_phase  = "running"
         _job_detail = ""
+
+    # Guardrail: while the lock is still held as running, never show "Complete".
+    if st.session_state.get("surveillance_running") and _job_phase == "done":
+        _job_phase = "finalizing"
 
     _PHASE_LABELS = {
         "idle":        "Waiting to start",
@@ -682,7 +713,9 @@ if st.session_state["surveillance_running"]:
         "parsing":     "Parsing JSON response…",
         "saving":      "Saving report to database…",
         "emailing":    "Sending email alert…",
+        "finalizing":  "Final checks — verifying saved report…",
         "done":        "Complete ✓",
+        "error":       "Status error",
     }
     _phase_display = _PHASE_LABELS.get(_job_phase, _job_phase.replace("_", " ").title())
     if _job_detail:
