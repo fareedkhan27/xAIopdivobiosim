@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 from xai_sdk.sync.client import Client
 from xai_sdk.chat import user as user_msg
 
-from db import get_latest_report, init_db, save_report
+from db import get_latest_report, init_db, save_report, MODEL_FAST, MODEL_FLAGSHIP
 from notifications import send_report_ready_email
 from prompts import OPDIVO_SURVEILLANCE_PROMPT
 
@@ -53,7 +53,9 @@ if not _api_key:
 client = Client(api_key=_api_key)
 del _api_key  # don't keep the key alive as a named module attribute
 
-MODEL = "grok-4-1-fast-reasoning"   # supports both Batch and Sync API
+MODEL_FAST_DEFAULT = MODEL_FAST         # grok-4-1-fast-reasoning — Batch + Sync
+MODEL_FLAGSHIP_DEFAULT = MODEL_FLAGSHIP # grok-4.20-reasoning — high accuracy
+MODEL = MODEL_FAST_DEFAULT              # default for backwards-compat references
 BATCH_POLL_INTERVAL = 30        # seconds between poll attempts
 BATCH_TIMEOUT = 14400           # 4 hours max
 BATCH_REQUEST_ID = "opdivo-surveillance-001"
@@ -101,23 +103,13 @@ def mark_job_error(detail: str) -> None:
 # Low-level helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _call_chat(prompt: str) -> str:
-    """Synchronous (non-batch) chat call — used for quick manual runs / fallback.
-
-    NOTE: With a large reasoning prompt, grok-3-mini-fast performs internal
-    chain-of-thought before replying.  Expect 5–20 minutes depending on
-    server load.
-
-    Pattern:
-        chat = client.chat.create(model, temperature=...)
-        chat.append(user_msg("..."))
-        response = chat.sample()       # blocks until model replies
-        return response.content        # plain string
-    """
-    _set_status("connecting", f"Opening sync chat with {MODEL}")
-    chat = client.chat.create(model=MODEL, temperature=0)
+def _call_chat(prompt: str, model: str | None = None) -> str:
+    """Synchronous (non-batch) chat call — used for quick manual runs / fallback."""
+    _model = model or MODEL
+    _set_status("connecting", f"Opening sync chat with {_model}")
+    chat = client.chat.create(model=_model, temperature=0)
     chat.append(user_msg(prompt))
-    _set_status("waiting", "Prompt sent — Grok is thinking (may take 5–20 min)")
+    _set_status("waiting", f"Prompt sent — {_model} is thinking (may take 5–20 min)")
     t0 = time.time()
     response = chat.sample()
     elapsed = time.time() - t0
@@ -130,32 +122,24 @@ def _call_chat(prompt: str) -> str:
 # Batch API  (50 % cost savings vs. synchronous calls)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def submit_batch_job() -> str:
-    """Creates a named Batch, adds the surveillance chat request, and returns
-    the batch_id.
-
-    xai-sdk batch pattern:
-        batch = client.batch.create(batch_name)
-        chat  = client.chat.create(model, batch_request_id=..., ...)
-        chat.append(user_msg("..."))
-        client.batch.add(batch_id=batch.batch_id, batch_requests=[chat])
-        # Batch is now sealed and processing begins automatically.
-    """
+def submit_batch_job(model: str | None = None) -> str:
+    """Creates a named Batch, adds the surveillance chat request, returns batch_id."""
+    _model = model or MODEL
     # 1. Create an empty named batch
     batch = client.batch.create("opdivo-surveillance")
     batch_id = batch.batch_id
-    log.info("Batch created: %s", batch_id)
+    log.info("Batch created: %s [model=%s]", batch_id, _model)
     _set_status("submitting", f"Batch created: {batch_id}")
 
-    # 2. Build the chat request (NOT executed yet — will be sent to the batch)
+    # 2. Build the chat request
     chat = client.chat.create(
-        model=MODEL,
+        model=_model,
         temperature=0,
-        batch_request_id=BATCH_REQUEST_ID,   # lets us match results later
+        batch_request_id=BATCH_REQUEST_ID,
     )
     chat.append(user_msg(OPDIVO_SURVEILLANCE_PROMPT))
 
-    # 3. Add the request to the batch (this seals + starts processing)
+    # 3. Seal + start
     client.batch.add(batch_id=batch_id, batch_requests=[chat])
     log.info("Batch request added & sealed: %s", batch_id)
     _set_status("queued", f"Batch job sealed and queued: {batch_id}")
@@ -319,19 +303,19 @@ def parse_grok_response(raw_text: str) -> dict:
 # Main orchestration
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_surveillance(use_batch: bool = True, run_token: str | None = None) -> dict:
+def run_surveillance(use_batch: bool = True, run_token: str | None = None, model: str | None = None) -> dict:
     """
     Full pipeline:
       1. Submit Batch job (or sync call)
       2. Parse JSON
-      3. Save to DB
+      3. Save to DB (with model_version tag)
       4. Send email alert
     Returns the parsed data dict.
     """
-    mode_label = "BATCH" if use_batch else "SYNC"
+    active_model = model or MODEL_FAST_DEFAULT
     t_start = datetime.now()
     run_token = run_token or t_start.isoformat()
-    log.info("=== Surveillance START [mode=%s] at %s ===", mode_label, t_start.isoformat())
+    log.info("=== Surveillance START [mode=%s model=%s] at %s ===", mode_label, active_model, t_start.isoformat())
     _set_status(
         "starting",
         f"Initialising {mode_label} surveillance run",
@@ -343,20 +327,20 @@ def run_surveillance(use_batch: bool = True, run_token: str | None = None) -> di
     init_db()
 
     if use_batch:
-        batch_id = submit_batch_job()
+        batch_id = submit_batch_job(model=active_model)
         raw_text = poll_batch_job(batch_id)
     else:
-        log.info("Running SYNC call — model=%s", MODEL)
-        _set_status("connecting", f"Sending prompt to {MODEL} via Sync API")
-        raw_text = _call_chat(OPDIVO_SURVEILLANCE_PROMPT)
+        log.info("Running SYNC call — model=%s", active_model)
+        _set_status("connecting", f"Sending prompt to {active_model} via Sync API")
+        raw_text = _call_chat(OPDIVO_SURVEILLANCE_PROMPT, model=active_model)
 
     _set_status("parsing", "Parsing JSON response from Grok")
     data = parse_grok_response(raw_text)
     summary = data.get("executive_summary", "No summary available.")
 
     _set_status("saving", "Saving report to database")
-    save_report(data, summary)
-    log.info("Report saved to DB.")
+    save_report(data, summary, model_version=active_model)
+    log.info("Report saved to DB [model=%s].", active_model)
 
     # Capture the exact latest row marker so main.py can verify it loaded
     # the report generated by this run (not an older cached row).

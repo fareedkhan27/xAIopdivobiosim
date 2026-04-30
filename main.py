@@ -22,7 +22,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from db import get_all_reports, get_latest_report, init_db
+from db import get_all_reports, get_latest_report, get_report_by_id, init_db, MODEL_FAST, MODEL_FLAGSHIP
 
 # ─── Page config ─────────────────────────────────────────────────────────────
 # MUST be the very first Streamlit call in the script.
@@ -69,6 +69,8 @@ if "job_start_time" not in st.session_state:
     st.session_state["job_start_time"] = None
 if "active_job_token" not in st.session_state:
     st.session_state["active_job_token"] = ""
+if "active_model" not in st.session_state:
+    st.session_state["active_model"] = MODEL_FAST  # default to fast model
 if "last_report" not in st.session_state:
     # Load the most-recent report from DB on first visit; subsequent reruns
     # use this cached copy (no DB hit per rerun).  Invalidated in two places:
@@ -505,7 +507,7 @@ def sentiment_badge(sentiment: str) -> str:
     return '<span class="badge-neu">🟠 Neutral</span>'
 
 
-def run_surveillance_thread(use_batch: bool, job_token: str):
+def run_surveillance_thread(use_batch: bool, job_token: str, model: str = MODEL_FAST):
     """Runs the surveillance in a background thread so Streamlit doesn't block.
 
     IMPORTANT: do not mutate Streamlit session state inside this worker thread.
@@ -515,7 +517,7 @@ def run_surveillance_thread(use_batch: bool, job_token: str):
     import agent as _agent
 
     try:
-        _agent.run_surveillance(use_batch=use_batch, run_token=job_token)
+        _agent.run_surveillance(use_batch=use_batch, run_token=job_token, model=model)
     except Exception as exc:
         try:
             _agent.mark_job_error(str(exc))
@@ -667,19 +669,50 @@ with st.sidebar:
         if st.session_state["surveillance_running"]:
             st.warning("⚠️ A job is already running — please wait for it to finish.")
         else:
-            # Acquire the lock before spawning the thread
             _job_token = datetime.now().isoformat()
             st.session_state["surveillance_running"] = True
             st.session_state["run_status"] = "running"
             st.session_state["job_start_time"] = datetime.fromisoformat(_job_token)
             st.session_state["active_job_token"] = _job_token
+            st.session_state["active_model"] = MODEL_FAST
             t = threading.Thread(
                 target=run_surveillance_thread,
-                args=(use_batch, _job_token),
+                args=(use_batch, _job_token, MODEL_FAST),
                 daemon=True,
             )
             t.start()
             st.rerun()   # immediately re-render so the button disables right away
+
+    # ── Flagship Run (access-code protected) ───────────────────────────────
+    _FLAGSHIP_CODE = "flagship2026"
+    with st.expander("🚀 Run Flagship Model", expanded=False):
+        st.caption("Higher accuracy · Significantly slower · Requires access code")
+        _fs_code = st.text_input("Access code", type="password", key="_flagship_code_input", label_visibility="collapsed", placeholder="Enter access code")
+        _fs_clicked = st.button(
+            "🚀 Run Flagship",
+            disabled=job_running,
+            use_container_width=True,
+            key="_flagship_btn",
+        )
+        if _fs_clicked:
+            if st.session_state["surveillance_running"]:
+                st.warning("⚠️ A job is already running.")
+            elif _fs_code != _FLAGSHIP_CODE:
+                st.error("❌ Invalid access code.")
+            else:
+                _job_token = datetime.now().isoformat()
+                st.session_state["surveillance_running"] = True
+                st.session_state["run_status"] = "running"
+                st.session_state["job_start_time"] = datetime.fromisoformat(_job_token)
+                st.session_state["active_job_token"] = _job_token
+                st.session_state["active_model"] = MODEL_FLAGSHIP
+                t = threading.Thread(
+                    target=run_surveillance_thread,
+                    args=(use_batch, _job_token, MODEL_FLAGSHIP),
+                    daemon=True,
+                )
+                t.start()
+                st.rerun()
 
     # ── In-progress indicator ──────────────────────────────────────────────
     # (sleep + rerun is handled by the full-page banner in the main content area)
@@ -726,11 +759,15 @@ with st.sidebar:
             )
         except Exception:
             _age_str = ""
+        _mv = _cached.get("model_version") or MODEL_FAST
+        _mv_label = "⚡ Grok 4.1 Fast" if _mv == MODEL_FAST else "🚀 Grok 4.20 Flagship"
+        _mv_color = "#6b7280" if _mv == MODEL_FAST else "#fbbf24"
         st.markdown(
             f'<div style="background:#1f2937;border:1px solid #374151;border-radius:8px;'
             f'padding:10px 12px;font-size:0.80rem;color:#9ca3af;line-height:1.6;">'
             f'<b style="color:#d1d5db;">📄 Cached Report</b><br>'
             f'{_ts}<br>'
+            f'<span style="color:{_mv_color};font-size:0.75rem;">{_mv_label}</span>&nbsp;'
             f'<span style="color:#6b7280;">{_age_str}</span></div>',
             unsafe_allow_html=True,
         )
@@ -1888,13 +1925,38 @@ elif page == "🌍 LR Markets":
 elif page == "🕑 History":
     st.title("🕑 Report History")
 
+    # Handle "Load Report" action from a row button
+    _load_id = st.session_state.pop("_load_report_id", None)
+    if _load_id:
+        _loaded = get_report_by_id(_load_id)
+        if _loaded:
+            st.session_state["last_report"] = _loaded
+            st.session_state["_goto_page"] = "📊 Dashboard"
+            st.rerun()
+
     all_reports = get_all_reports()
     if not all_reports:
-        st.info("No reports yet.")
+        st.info("No reports yet. Run a surveillance job to generate your first report.")
         st.stop()
+
+    st.caption(f"{len(all_reports)} report(s) stored — click **Load** to view any report on the Dashboard.")
+    st.markdown("---")
 
     for rep in all_reports:
         ts = rep.get("run_date", "")[:19].replace("T", " ")
         summary = rep.get("summary", "No summary") or "No summary"
-        with st.expander(f"📄 Report #{rep['id']}  —  {ts}"):
-            st.write(summary[:500] + ("…" if len(summary) > 500 else ""))
+        mv = rep.get("model_version") or MODEL_FAST
+        if mv == MODEL_FLAGSHIP:
+            _badge = '<span style="background:#78350f;color:#fbbf24;border-radius:4px;padding:2px 8px;font-size:0.72rem;font-weight:600;">🚀 Flagship</span>'
+        else:
+            _badge = '<span style="background:#1e3a5f;color:#93c5fd;border-radius:4px;padding:2px 8px;font-size:0.72rem;font-weight:600;">⚡ Fast</span>'
+
+        col_exp, col_btn = st.columns([9, 1])
+        with col_exp:
+            with st.expander(f"📄 Report #{rep['id']}  —  {ts}"):
+                st.markdown(_badge, unsafe_allow_html=True)
+                st.write(summary[:500] + ("…" if len(summary) > 500 else ""))
+        with col_btn:
+            if st.button("Load", key=f"_load_{rep['id']}", use_container_width=True, help="View this report on Dashboard"):
+                st.session_state["_load_report_id"] = rep["id"]
+                st.rerun()
