@@ -160,12 +160,15 @@ def send_high_risk_alert(report_data: dict) -> None:
 
     Only called when at least one threat has risk_level == 'High'.
     Includes full threat table (Country, Op. Model, Company, Biosimilar,
-    Est. Launch, Risk Rationale, Recommended Actions) plus exec summary
-    and a direct dashboard link.
+    Est. Launch, Risk Rationale, Recommended Actions) plus exec summary,
+    consolidated action summary, and a direct dashboard link.
+    Mobile-friendly layout using max-width and inline styles.
     """
     report_data = report_data or {}
-    run_date = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
-    subject = f"⚠️ High-Risk Biosimilar Threat Alert - Opdivo Surveillance [{datetime.now().strftime('%Y-%m-%d')}]"
+    now = datetime.now()
+    run_date = now.strftime("%d %B %Y, %H:%M UTC")
+    date_short = now.strftime("%Y-%m-%d")
+    subject = f"\u26a0\ufe0f HIGH-RISK Opdivo Biosimilar Threat Alert \u2013 {date_short}"
 
     executive_summary = report_data.get("executive_summary", "No summary available.")
     threats = report_data.get("my_markets_threat", []) or []
@@ -175,8 +178,10 @@ def send_high_risk_alert(report_data: dict) -> None:
         if str(t.get("risk_level", "")).strip().lower() == "high"
     ]
 
-    # Build one table row per High-risk threat
+    # ── Build one table row per High-risk threat ───────────────────────────
     threat_rows = []
+    all_actions: list[str] = []   # collect unique actions for summary section
+
     for t in high_risk:
         country    = str(t.get("country", "Unknown")).strip()
         region     = str(t.get("region", "—")).strip()
@@ -187,11 +192,17 @@ def send_high_risk_alert(report_data: dict) -> None:
         est_launch = str(t.get("est_launch", "TBD")).strip()
         rationale  = str(t.get("risk_rationale", "No rationale provided.")).strip()
         actions    = t.get("recommended_actions", []) or []
-        actions_html = "".join(
-            f'<li style="margin-bottom:3px;color:#fcd34d;">{a}</li>' for a in actions
-        ) if actions else '<li style="color:#9ca3af;">No actions specified</li>'
 
-        # LPM gets a red badge, OPM gets amber, others grey
+        for a in actions:
+            if a and a not in all_actions:
+                all_actions.append(a)
+
+        actions_html = "".join(
+            f'<li style="margin-bottom:4px;color:#fcd34d;font-size:12px;">{a}</li>'
+            for a in actions
+        ) if actions else '<li style="color:#9ca3af;font-size:12px;">No actions specified</li>'
+
+        # LPM = red badge, OPM = amber badge, others = grey
         if op_model.upper() == "LPM":
             badge_bg, badge_fg = "#7f1d1d", "#fca5a5"
         elif op_model.upper() == "OPM":
@@ -206,82 +217,159 @@ def send_high_risk_alert(report_data: dict) -> None:
             <span style="font-size:11px;color:#9ca3af;">{region}</span>
           </td>
           <td style="padding:12px 10px;border-bottom:1px solid #374151;vertical-align:top;text-align:center;">
-            <span style="background:{badge_bg};color:{badge_fg};border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;">{op_model}</span>
+            <span style="background:{badge_bg};color:{badge_fg};border-radius:4px;
+                         padding:3px 9px;font-size:12px;font-weight:700;white-space:nowrap;">
+              {op_model}
+            </span>
           </td>
-          <td style="padding:12px 10px;border-bottom:1px solid #374151;vertical-align:top;color:#e5e7eb;">{company}</td>
+          <td style="padding:12px 10px;border-bottom:1px solid #374151;vertical-align:top;
+                     color:#e5e7eb;font-weight:600;">{company}</td>
           <td style="padding:12px 10px;border-bottom:1px solid #374151;vertical-align:top;color:#e5e7eb;">
             {biosimilar}<br><span style="font-size:11px;color:#9ca3af;">{phase}</span>
           </td>
-          <td style="padding:12px 10px;border-bottom:1px solid #374151;vertical-align:top;color:#fbbf24;font-weight:600;">{est_launch}</td>
-          <td style="padding:12px 10px;border-bottom:1px solid #374151;vertical-align:top;color:#d1d5db;font-size:13px;">{rationale}</td>
+          <td style="padding:12px 10px;border-bottom:1px solid #374151;vertical-align:top;
+                     color:#fbbf24;font-weight:700;white-space:nowrap;">{est_launch}</td>
+          <td style="padding:12px 10px;border-bottom:1px solid #374151;vertical-align:top;
+                     color:#d1d5db;font-size:13px;line-height:1.5;">{rationale}</td>
           <td style="padding:12px 10px;border-bottom:1px solid #374151;vertical-align:top;">
-            <ul style="margin:0;padding-left:16px;font-size:12px;">{actions_html}</ul>
+            <ul style="margin:0;padding-left:14px;">{actions_html}</ul>
           </td>
         </tr>
         """)
 
     threat_table = f"""
-    <table style="width:100%;border-collapse:collapse;background:#111827;border:1px solid #374151;border-radius:10px;overflow:hidden;font-size:13px;">
+    <div style="overflow-x:auto;">
+    <table style="width:100%;min-width:680px;border-collapse:collapse;
+                  background:#111827;border:1px solid #374151;
+                  border-radius:10px;overflow:hidden;font-size:13px;">
       <thead>
         <tr style="background:#1f2937;">
-          <th style="text-align:left;padding:10px;color:#fca5a5;border-bottom:1px solid #374151;">Country</th>
-          <th style="text-align:center;padding:10px;color:#fca5a5;border-bottom:1px solid #374151;">Op. Model</th>
-          <th style="text-align:left;padding:10px;color:#fca5a5;border-bottom:1px solid #374151;">Company</th>
-          <th style="text-align:left;padding:10px;color:#fca5a5;border-bottom:1px solid #374151;">Biosimilar</th>
-          <th style="text-align:left;padding:10px;color:#fca5a5;border-bottom:1px solid #374151;">Est. Launch</th>
-          <th style="text-align:left;padding:10px;color:#fca5a5;border-bottom:1px solid #374151;">Risk Rationale</th>
-          <th style="text-align:left;padding:10px;color:#fca5a5;border-bottom:1px solid #374151;">Recommended Actions</th>
+          <th style="text-align:left;padding:10px 10px;color:#fca5a5;border-bottom:1px solid #374151;">Country</th>
+          <th style="text-align:center;padding:10px 10px;color:#fca5a5;border-bottom:1px solid #374151;">Op. Model</th>
+          <th style="text-align:left;padding:10px 10px;color:#fca5a5;border-bottom:1px solid #374151;">Company</th>
+          <th style="text-align:left;padding:10px 10px;color:#fca5a5;border-bottom:1px solid #374151;">Biosimilar</th>
+          <th style="text-align:left;padding:10px 10px;color:#fca5a5;border-bottom:1px solid #374151;">Est. Launch</th>
+          <th style="text-align:left;padding:10px 10px;color:#fca5a5;border-bottom:1px solid #374151;">Risk Rationale</th>
+          <th style="text-align:left;padding:10px 10px;color:#fca5a5;border-bottom:1px solid #374151;">Recommended Actions</th>
         </tr>
       </thead>
       <tbody>
         {chr(10).join(threat_rows)}
       </tbody>
     </table>
+    </div>
     """
 
+    # ── Consolidated recommended actions block ─────────────────────────────
+    if all_actions:
+        actions_summary_items = "".join(
+            f'<li style="margin-bottom:6px;color:#fcd34d;">{a}</li>'
+            for a in all_actions
+        )
+        actions_summary_section = f"""
+        <h3 style="color:#e5e7eb;margin:22px 0 10px;">&#9989; Key Recommended Actions</h3>
+        <div style="background:#1c1917;border:1px solid #78350f;border-radius:10px;
+                    padding:14px 18px;color:#d1d5db;">
+          <ul style="margin:0;padding-left:18px;line-height:1.8;">
+            {actions_summary_items}
+          </ul>
+        </div>
+        """
+    else:
+        actions_summary_section = ""
+
     html_body = f"""
-    <html>
-    <body style="font-family:Arial,sans-serif;background:#0f172a;color:#f3f4f6;padding:24px;">
-      <div style="max-width:900px;margin:0 auto;background:#111827;border:2px solid #dc2626;border-radius:14px;padding:28px;">
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>High-Risk Biosimilar Alert</title>
+    </head>
+    <body style="margin:0;padding:0;background:#0f172a;font-family:Arial,Helvetica,sans-serif;
+                 color:#f3f4f6;-webkit-text-size-adjust:100%;">
+      <div style="max-width:900px;margin:24px auto;background:#111827;
+                  border:2px solid #dc2626;border-radius:14px;padding:28px 24px;">
 
-        <!-- Header -->
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
-          <span style="font-size:28px;">&#9888;</span>
-          <h2 style="color:#fca5a5;margin:0;">High-Risk Biosimilar Threat Alert</h2>
-        </div>
-        <p style="font-size:13px;color:#9ca3af;margin-top:0;">Opdivo Surveillance &mdash; Report generated: {run_date}</p>
+        <!-- ── Header ─────────────────────────────────────────────────── -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:4px;">
+          <tr>
+            <td style="vertical-align:middle;">
+              <span style="font-size:26px;vertical-align:middle;">&#9888;&#65039;</span>
+              <span style="font-size:20px;font-weight:700;color:#fca5a5;
+                           vertical-align:middle;margin-left:8px;">
+                HIGH-RISK Biosimilar Threat Alert
+              </span>
+            </td>
+          </tr>
+        </table>
+        <p style="font-size:12px;color:#9ca3af;margin:4px 0 0;">
+          Opdivo Surveillance &mdash; Report generated: {run_date}
+        </p>
 
-        <!-- KPI bar -->
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin:18px 0;">
-          <div style="background:#450a0a;border:1px solid #dc2626;border-radius:10px;padding:10px 16px;min-width:130px;">
-            <div style="font-size:11px;color:#fca5a5;">&#128680; High-Risk Threats</div>
-            <div style="font-size:26px;font-weight:700;color:#f87171;">{len(high_risk)}</div>
-          </div>
-          <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:10px 16px;min-width:130px;">
-            <div style="font-size:11px;color:#9ca3af;">Total Threats Tracked</div>
-            <div style="font-size:26px;font-weight:700;color:#e5e7eb;">{len(threats)}</div>
-          </div>
-        </div>
+        <hr style="border:none;border-top:1px solid #374151;margin:18px 0;">
 
-        <!-- Exec Summary -->
-        <h3 style="color:#e5e7eb;margin-bottom:8px;">Executive Summary</h3>
-        <div style="background:#0b1220;border:1px solid #1f2937;border-radius:10px;padding:14px 16px;color:#d1d5db;line-height:1.7;">
+        <!-- ── Greeting ───────────────────────────────────────────────── -->
+        <p style="font-size:15px;color:#e5e7eb;margin:0 0 16px;">
+          Dear Operations Team,
+        </p>
+        <p style="font-size:14px;color:#d1d5db;margin:0 0 18px;line-height:1.6;">
+          The Opdivo Biosimilar Surveillance system has detected
+          <strong style="color:#f87171;">{len(high_risk)} High-risk threat(s)</strong>
+          in your LR Markets during the latest automated scan.
+          Immediate review and action are recommended.
+        </p>
+
+        <!-- ── KPI chips ──────────────────────────────────────────────── -->
+        <table cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+          <tr>
+            <td style="padding-right:12px;">
+              <div style="background:#450a0a;border:1px solid #dc2626;border-radius:10px;
+                          padding:10px 16px;min-width:120px;display:inline-block;">
+                <div style="font-size:11px;color:#fca5a5;">&#128680; High-Risk Threats</div>
+                <div style="font-size:26px;font-weight:700;color:#f87171;">{len(high_risk)}</div>
+              </div>
+            </td>
+            <td>
+              <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;
+                          padding:10px 16px;min-width:120px;display:inline-block;">
+                <div style="font-size:11px;color:#9ca3af;">Total Threats Tracked</div>
+                <div style="font-size:26px;font-weight:700;color:#e5e7eb;">{len(threats)}</div>
+              </div>
+            </td>
+          </tr>
+        </table>
+
+        <!-- ── Executive Summary ──────────────────────────────────────── -->
+        <h3 style="color:#e5e7eb;margin:0 0 8px;">Executive Summary</h3>
+        <div style="background:#0b1220;border:1px solid #1f2937;border-radius:10px;
+                    padding:14px 16px;color:#d1d5db;line-height:1.7;font-size:14px;">
           {executive_summary}
         </div>
 
-        <!-- Threat table -->
-        <h3 style="color:#fca5a5;margin:22px 0 10px;">&#128680; High-Risk Threats &mdash; Full Detail</h3>
+        <!-- ── High-Risk Threats Table ────────────────────────────────── -->
+        <h3 style="color:#fca5a5;margin:22px 0 10px;">
+          &#128680; High-Risk Threats &mdash; Full Detail
+        </h3>
         {threat_table}
 
-        <!-- CTA -->
-        <div style="margin-top:24px;padding-top:16px;border-top:1px solid #374151;">
+        <!-- ── Consolidated Recommended Actions ──────────────────────── -->
+        {actions_summary_section}
+
+        <!-- ── CTA ───────────────────────────────────────────────────── -->
+        <div style="margin-top:26px;padding-top:18px;border-top:1px solid #374151;">
+          <p style="font-size:14px;color:#d1d5db;margin:0 0 14px;">
+            View the full report, trend charts, and pipeline tracker on the dashboard:
+          </p>
           <a href="https://biosimintel.com"
-             style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;
-                    font-weight:700;padding:11px 20px;border-radius:8px;font-size:14px;">
-            &#128279; Open Dashboard Now
+             style="display:inline-block;background:#dc2626;color:#ffffff;
+                    text-decoration:none;font-weight:700;padding:12px 22px;
+                    border-radius:8px;font-size:14px;letter-spacing:0.02em;">
+            &#128279;&nbsp; Open Dashboard &mdash; biosimintel.com
           </a>
-          <p style="font-size:12px;color:#6b7280;margin-top:10px;">
-            Direct link: https://biosimintel.com
+          <p style="font-size:11px;color:#6b7280;margin:12px 0 0;">
+            This alert was automatically generated by the Opdivo Biosimilar Surveillance system
+            on {run_date}. Do not reply to this email.
           </p>
         </div>
 
