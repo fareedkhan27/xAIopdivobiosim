@@ -53,7 +53,7 @@ if not _api_key:
 client = Client(api_key=_api_key)
 del _api_key  # don't keep the key alive as a named module attribute
 
-MODEL = "grok-3-mini-fast"      # switch to grok-3-latest or grok-4 when available
+MODEL = "grok-4-1-fast-reasoning"   # supports both Batch and Sync API
 BATCH_POLL_INTERVAL = 30        # seconds between poll attempts
 BATCH_TIMEOUT = 14400           # 4 hours max
 BATCH_REQUEST_ID = "opdivo-surveillance-001"
