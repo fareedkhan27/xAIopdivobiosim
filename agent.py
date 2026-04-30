@@ -300,6 +300,7 @@ def parse_grok_response(raw_text: str) -> dict:
         post.setdefault("platform", "X")
         post.setdefault("signal_type", "Regulatory")
         post.setdefault("date", None)
+        post.setdefault("url", None)
 
     # ── Normalise verified_updates (new url / relevance fields) ──────────────
     for update in data.get("verified_updates", []):

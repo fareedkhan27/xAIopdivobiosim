@@ -340,6 +340,42 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color: 
 .post-card .user  { font-weight: 600; color: #60a5fa !important; }
 .post-card .time  { font-size: 0.78rem; color: #6b7280 !important; margin-left: 8px; }
 .post-card .text  { margin-top: 8px; font-size: 0.9rem; color: #e5e7eb !important; }
+.post-card .post-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.post-card .post-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.post-card .platform-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #111827;
+    border: 1px solid #374151;
+    color: #d1d5db !important;
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+.post-card .post-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #93c5fd !important;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+.post-card .post-link:hover { color: #bfdbfe !important; text-decoration: underline; }
 
 /* ---- Badges ---- */
 .badge-pos { background:#065f46 !important; color:#6ee7b7 !important; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
@@ -1260,11 +1296,24 @@ elif page == "📣 Social Noise":
         sent_filter = st.multiselect("Filter by sentiment", ["Positive", "Neutral", "Negative"])
         posts = [p for p in social if (not sent_filter or p.get("sentiment") in sent_filter)]
         for post in posts:
+            _post_url = (post.get("url") or "").strip()
+            _platform = (post.get("platform") or "News").strip()
+            _link_html = (
+                f'<a class="post-link" href="{_post_url}" target="_blank" rel="noopener noreferrer">'
+                f'🔗 View Original</a>'
+                if _post_url else ""
+            )
             st.markdown(
                 f'<div class="post-card">'
+                f'<div class="post-header">'
+                f'<div class="post-meta">'
+                f'<span class="platform-badge">🌐 {_platform}</span>'
                 f'<span class="user">{post.get("user","@unknown")}</span>'
-                f'<span class="time">{post.get("time","")}</span> '
+                f'<span class="time">{post.get("date","")}</span>'
                 f'{sentiment_badge(post.get("sentiment","Neutral"))}'
+                f'</div>'
+                f'{_link_html}'
+                f'</div>'
                 f'<div class="text">{post.get("post","")}</div>'
                 f'</div>',
                 unsafe_allow_html=True,

@@ -82,8 +82,17 @@ SECTION 3 — SOCIAL & MARKET INTELLIGENCE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Search X (Twitter), LinkedIn, and pharmaceutical news outlets for the last 30 days of
-discussion on nivolumab biosimilars. Focus on: pricing announcements, tender outcomes,
-physician switching commentary, patient advocacy sentiment, and analyst forecasts.
+discussion on nivolumab biosimilars. Expand this sweep across all major public discussion
+channels: X (Twitter), LinkedIn, Reddit, Facebook groups, pharma forums, news comment sections,
+patient advocacy sites, investor commentary, and other credible public discussion boards.
+Collect diverse signals around Opdivo / nivolumab biosimilars including: pricing announcements,
+tender outcomes, physician switching commentary, patient advocacy sentiment, launch rumours,
+market access discussion, analyst forecasts, payer commentary, and competitive sentiment.
+Every social_noise entry must clearly identify the originating platform using the platform field
+(for example: X, LinkedIn, Reddit, Forum, News, Facebook, Patient Advocacy, or Blog).
+When sourcing any post or article, always include the original public URL when it is available.
+For X posts, use this exact format when possible: https://x.com/username/status/1234567890.
+If the exact source URL cannot be verified, use null rather than inventing a link.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT FORMAT — STRICT JSON ONLY
@@ -124,9 +133,10 @@ Every field listed below is REQUIRED. Use null for unknown values (never omit a 
 
   "social_noise": [
     {
-      "platform": "X | LinkedIn | Reddit | News",
+      "platform": "X | LinkedIn | Reddit | Facebook | Forum | News | Patient Advocacy | Blog",
       "user": "@handle or publication name",
       "date": "YYYY-MM-DD",
+      "url": "https://x.com/username/status/1234567890 | https://... | null",
       "post": "Verbatim quote or accurate paraphrase — max 280 characters",
       "sentiment": "Positive | Neutral | Negative",
       "signal_type": "Pricing | Tender | Clinical | Regulatory | Physician sentiment | Patient advocacy | Analyst forecast"
