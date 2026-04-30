@@ -51,10 +51,10 @@ _logging.basicConfig(level=_logging.INFO)
 _log = _logging.getLogger(__name__)
 try:
     # Initialise DB schema on every startup — safe: uses CREATE TABLE IF NOT EXISTS
-# and ALTER TABLE ADD COLUMN only. No data is ever dropped or deleted.
-# On Railway: mount a persistent Volume at the DB_PATH location so the
-# SQLite file survives redeploys (set DB_PATH env var to e.g. /data/opdivo_reports.db).
-init_db()
+    # and ALTER TABLE ADD COLUMN only. No data is ever dropped or deleted.
+    # On Railway: mount a persistent Volume at the DB_PATH location so the
+    # SQLite file survives redeploys (set DB_PATH env var to e.g. /data/opdivo_reports.db).
+    init_db()
     _log.info("Database initialized successfully.")
 except Exception as _db_err:
     _log.error("Database initialization failed: %s", _db_err)
