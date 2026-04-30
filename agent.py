@@ -84,9 +84,9 @@ def _set_status(phase: str, detail: str = "", **extra: object) -> None:
 
 
 def get_status_snapshot() -> dict:
-    """Return a thread-safe copy of the current job status."""
+    """Return a thread-safe full copy of the current job status."""
     with _JOB_STATUS_LOCK:
-        return {"phase": JOB_STATUS.get("phase", "idle"), "detail": JOB_STATUS.get("detail", "")}
+        return dict(JOB_STATUS)
 
 
 def mark_job_complete(detail: str = "Complete ✓") -> None:
@@ -386,7 +386,9 @@ def run_surveillance(use_batch: bool = True, run_token: str | None = None, model
         "=== Surveillance COMPLETE [mode=%s] duration=%.1fs (%.1f min) at %s ===",
         mode_label, duration, duration / 60, t_end.isoformat(),
     )
-    _set_status("finalizing", f"Pipeline completed in {duration:.0f}s — verifying saved report")
+    # Mark done immediately so the main thread can detect completion on the
+    # very next reconcile pass without waiting for an extra reconcile cycle.
+    mark_job_complete(f"Complete ✓ — Pipeline done in {duration:.0f}s")
     return data
 
 

@@ -555,8 +555,9 @@ def reconcile_job_state_from_agent() -> bool:
     if _active_job_token and _run_token and _run_token != _active_job_token:
         return False
 
-    # If the worker reached finalizing, verify DB persistence before declaring done.
-    if _phase in {"finalizing", "done"}:
+    # If the worker reached finalizing/done/complete, verify DB persistence before
+    # clearing the running flag and surfacing the new report.
+    if _phase in {"finalizing", "done", "complete"}:
         _start: datetime | None = st.session_state.get("job_start_time")
         _latest = get_latest_report()
         _saved_ok = False
@@ -566,7 +567,7 @@ def reconcile_job_state_from_agent() -> bool:
             if _result_ready and _expected_run_date:
                 _saved_ok = str(_latest.get("run_date", "")) == _expected_run_date
             else:
-                # Fallback for legacy/in-flight states.
+                # Fallback: any report saved at or after the job started is ours.
                 _saved_ok = True
                 if _start is not None:
                     try:
@@ -576,28 +577,25 @@ def reconcile_job_state_from_agent() -> bool:
                         _saved_ok = False
 
         if _saved_ok:
-            # Always refresh cache with the just-saved DB row.
-            if st.session_state.get("last_report") != _latest:
-                st.session_state["last_report"] = _latest
-                _changed = True
+            # Unconditionally load the latest report from DB and update the cache
+            # so the dashboard always renders the new data after this rerun.
+            st.session_state["last_report"] = _latest
+            _changed = True  # always rerun to surface the new report
+
             if st.session_state.get("surveillance_running"):
                 st.session_state["surveillance_running"] = False
-                _changed = True
+            # Stop the elapsed timer immediately.
+            if st.session_state.get("job_start_time") is not None:
+                st.session_state["job_start_time"] = None
             # Lock buttons for the rest of this session once a job completes.
             if not st.session_state.get("job_completed_today"):
                 st.session_state["job_completed_today"] = True
-                _changed = True
-            if st.session_state.get("job_start_time") is not None:
-                st.session_state["job_start_time"] = None
-                _changed = True
-            if st.session_state.get("run_status") != "":
+            if st.session_state.get("run_status") not in ("", None):
                 st.session_state["run_status"] = ""
-                _changed = True
             if st.session_state.get("active_job_token"):
                 st.session_state["active_job_token"] = ""
-                _changed = True
 
-            # Publish terminal done only after DB verification succeeded.
+            # Ensure agent phase is "done" so future reconcile passes are no-ops.
             if _phase != "done":
                 _agent.mark_job_complete("Complete ✓ — Report saved and ready")
 
@@ -845,7 +843,7 @@ if st.session_state["surveillance_running"]:
         else "Keep this tab open until the job finishes."
     )
 
-    # Read live phase from agent module (set by worker thread + completion verifier)
+    # Read live phase from agent module (set by worker thread)
     try:
         import agent as _agent_mod
         _status      = _agent_mod.get_status_snapshot()
@@ -855,9 +853,18 @@ if st.session_state["surveillance_running"]:
         _job_phase  = "running"
         _job_detail = ""
 
-    # Guardrail: while the lock is still held as running, never show "Complete".
-    if st.session_state.get("surveillance_running") and _job_phase == "done":
-        _job_phase = "finalizing"
+    # Fast-path: job is truly done — skip the banner, clear state, show report.
+    if _job_phase in {"done", "complete"}:
+        st.session_state["surveillance_running"] = False
+        st.session_state["job_start_time"]       = None
+        st.session_state["run_status"]           = ""
+        st.session_state["active_job_token"]     = ""
+        if not st.session_state.get("job_completed_today"):
+            st.session_state["job_completed_today"] = True
+        _fresh = get_latest_report()
+        if _fresh:
+            st.session_state["last_report"] = _fresh
+        st.rerun()
 
     _PHASE_LABELS = {
         "idle":        "Waiting to start",
@@ -962,9 +969,10 @@ if st.session_state["surveillance_running"]:
         unsafe_allow_html=True,
     )
 
-    # Short polling interval keeps the UI responsive when the background job
-    # completes and lets the main script consume the freshly saved report.
-    _time.sleep(5)
+    # Poll every 5 s while the job is still in flight so the UI stays
+    # responsive.  (The fast-path above exits immediately on completion.)
+    if _job_phase not in {"done", "complete", "error"}:
+        _time.sleep(5)
     st.rerun()
 
 # ─── Page routing ─────────────────────────────────────────────────────────────
