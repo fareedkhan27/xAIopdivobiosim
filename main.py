@@ -75,6 +75,9 @@ if "active_job_token" not in st.session_state:
     st.session_state["active_job_token"] = ""
 if "active_model" not in st.session_state:
     st.session_state["active_model"] = MODEL_FAST  # default to fast model
+if "job_completed_today" not in st.session_state:
+    # Set to True after any successful run this session to prevent duplicate runs.
+    st.session_state["job_completed_today"] = False
 if "last_report" not in st.session_state:
     # Load the most-recent report from DB on first visit; subsequent reruns
     # use this cached copy (no DB hit per rerun).  Invalidated in two places:
@@ -579,6 +582,10 @@ def reconcile_job_state_from_agent() -> bool:
                 _changed = True
             if st.session_state.get("surveillance_running"):
                 st.session_state["surveillance_running"] = False
+                _changed = True
+            # Lock buttons for the rest of this session once a job completes.
+            if not st.session_state.get("job_completed_today"):
+                st.session_state["job_completed_today"] = True
                 _changed = True
             if st.session_state.get("job_start_time") is not None:
                 st.session_state["job_start_time"] = None
@@ -1943,24 +1950,35 @@ elif page == "🕑 History":
         st.info("No reports yet. Run a surveillance job to generate your first report.")
         st.stop()
 
-    st.caption(f"{len(all_reports)} report(s) stored — click **Load** to view any report on the Dashboard.")
+    # ── Summary counts ──────────────────────────────────────────────────────
+    _fast_count = sum(1 for r in all_reports if (r.get("model_version") or MODEL_FAST) == MODEL_FAST)
+    _flag_count = len(all_reports) - _fast_count
+    _c1, _c2, _c3 = st.columns(3)
+    _c1.metric("📊 Total Reports", len(all_reports))
+    _c2.metric("⚡ Grok 4.1 Fast", _fast_count)
+    _c3.metric("🚀 Grok 4.20 Flagship", _flag_count)
+    st.caption("Click **Load** to view any historical report on the Dashboard for side-by-side comparison.")
     st.markdown("---")
 
     for rep in all_reports:
         ts = rep.get("run_date", "")[:19].replace("T", " ")
         summary = rep.get("summary", "No summary") or "No summary"
         mv = rep.get("model_version") or MODEL_FAST
-        if mv == MODEL_FLAGSHIP:
-            _badge = '<span style="background:#78350f;color:#fbbf24;border-radius:4px;padding:2px 8px;font-size:0.72rem;font-weight:600;">🚀 Flagship</span>'
+        is_flagship = mv == MODEL_FLAGSHIP
+        if is_flagship:
+            _badge_html = '<span style="background:#78350f;color:#fbbf24;border-radius:4px;padding:2px 8px;font-size:0.72rem;font-weight:700;letter-spacing:0.02em;">🚀 Grok 4.20 Flagship</span>'
+            _border_color = "#92400e"
         else:
-            _badge = '<span style="background:#1e3a5f;color:#93c5fd;border-radius:4px;padding:2px 8px;font-size:0.72rem;font-weight:600;">⚡ Fast</span>'
+            _badge_html = '<span style="background:#1e3a5f;color:#93c5fd;border-radius:4px;padding:2px 8px;font-size:0.72rem;font-weight:700;letter-spacing:0.02em;">⚡ Grok 4.1 Fast</span>'
+            _border_color = "#1e40af"
 
         col_exp, col_btn = st.columns([9, 1])
         with col_exp:
             with st.expander(f"📄 Report #{rep['id']}  —  {ts}"):
-                st.markdown(_badge, unsafe_allow_html=True)
-                st.write(summary[:500] + ("…" if len(summary) > 500 else ""))
+                st.markdown(_badge_html, unsafe_allow_html=True)
+                st.caption(f"Model: `{mv}`")
+                st.write(summary[:600] + ("…" if len(summary) > 600 else ""))
         with col_btn:
-            if st.button("Load", key=f"_load_{rep['id']}", use_container_width=True, help="View this report on Dashboard"):
+            if st.button("Load", key=f"_load_{rep['id']}", use_container_width=True, help="Load this report onto the Dashboard"):
                 st.session_state["_load_report_id"] = rep["id"]
                 st.rerun()
