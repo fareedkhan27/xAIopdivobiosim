@@ -1,13 +1,19 @@
 """
-notifications.py — Gmail SMTP email alerts.
+notifications.py — Email alerts via Resend API (HTTP/443).
 
-SMTP strategy:
-  • Primary:  port 465 SSL  (smtplib.SMTP_SSL)  — works on Railway and most hosts.
-  • Fallback: port 587 STARTTLS (smtplib.SMTP)  — used when SMTP_PORT is explicitly
-              set to 587 via environment variable, or when the SSL attempt fails.
+Transport strategy:
+  • Primary:  Resend HTTP API (port 443) — works on Railway and any host.
+              Set RESEND_API_KEY in Railway environment variables.
+              Get a free key at https://resend.com (3,000 emails/month free).
+  • Fallback: Gmail SMTP — used automatically when RESEND_API_KEY is not set
+              (local development only; SMTP ports are blocked on Railway).
 
-Set SMTP_PORT=465 (or leave unset) for Railway deployments.
-Set SMTP_PORT=587 only if your mail provider requires STARTTLS.
+Required environment variables:
+  RESEND_API_KEY   — Resend API key  (production / Railway)
+  EMAIL_SENDER     — From address, must be a verified Resend domain sender
+                     e.g. alerts@biosimintel.com  or  onboarding@resend.dev (sandbox)
+  EMAIL_RECIPIENT  — Destination address
+  EMAIL_PASSWORD   — Gmail app password (only needed for local SMTP fallback)
 """
 
 import logging
@@ -23,67 +29,73 @@ load_dotenv()
 
 log = logging.getLogger(__name__)
 
-SMTP_SERVER   = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT     = int(os.getenv("SMTP_PORT", 465))   # 465 = SSL (Railway-safe default)
+RESEND_API_KEY  = os.getenv("RESEND_API_KEY", "")
 EMAIL_SENDER    = os.getenv("EMAIL_SENDER", "")
 EMAIL_PASSWORD  = os.getenv("EMAIL_PASSWORD", "")
 EMAIL_RECIPIENT = os.getenv("EMAIL_RECIPIENT", "")
 
-_SMTP_TIMEOUT = 20  # seconds — fail fast rather than hanging
+# SMTP fallback settings (local dev only)
+SMTP_SERVER  = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT    = int(os.getenv("SMTP_PORT", 465))
+_SMTP_TIMEOUT = 20
 
 
-def _send_html_email(subject: str, html_body: str) -> None:
-    """Low-level SMTP sender for HTML emails.
+def _send_via_resend(subject: str, html_body: str) -> None:
+    """Send via Resend HTTP API — works on Railway (port 443, never blocked)."""
+    import resend  # type: ignore[import]
+    resend.api_key = RESEND_API_KEY
+    resp = resend.Emails.send({
+        "from":    EMAIL_SENDER or "Opdivo Surveillance <onboarding@resend.dev>",
+        "to":      [EMAIL_RECIPIENT],
+        "subject": subject,
+        "html":    html_body,
+    })
+    log.info("Resend: email sent — id=%s", resp.get("id", "?"))
 
-    Tries SSL (port 465) first; falls back to STARTTLS (port 587) if the
-    configured port is 587 or if the SSL connection is refused.
-    """
+
+def _send_via_smtp(subject: str, html_body: str) -> None:
+    """SMTP fallback — local dev only (Railway blocks all SMTP ports)."""
     if not all([EMAIL_SENDER, EMAIL_PASSWORD, EMAIL_RECIPIENT]):
         raise EnvironmentError(
-            "EMAIL_SENDER, EMAIL_PASSWORD, and EMAIL_RECIPIENT must be set "
-            "in Railway environment variables (or .env for local dev)."
+            "EMAIL_SENDER, EMAIL_PASSWORD, and EMAIL_RECIPIENT must be set."
         )
-
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = EMAIL_SENDER
     msg["To"]      = EMAIL_RECIPIENT
     msg.attach(MIMEText(html_body, "html"))
-
     raw = msg.as_string()
 
-    def _try_ssl(port: int) -> None:
-        log.info("SMTP: trying SSL on %s:%d", SMTP_SERVER, port)
-        with smtplib.SMTP_SSL(SMTP_SERVER, port, timeout=_SMTP_TIMEOUT) as srv:
+    try:
+        log.info("SMTP: trying SSL on %s:%d", SMTP_SERVER, SMTP_PORT)
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=_SMTP_TIMEOUT) as srv:
             srv.login(EMAIL_SENDER, EMAIL_PASSWORD)
             srv.sendmail(EMAIL_SENDER, EMAIL_RECIPIENT, raw)
-        log.info("SMTP: email sent via SSL (%s:%d)", SMTP_SERVER, port)
+        log.info("SMTP: sent via SSL %s:%d", SMTP_SERVER, SMTP_PORT)
+        return
+    except Exception as e1:
+        log.warning("SMTP SSL failed (%s); trying STARTTLS 587.", e1)
 
-    def _try_starttls(port: int) -> None:
-        log.info("SMTP: trying STARTTLS on %s:%d", SMTP_SERVER, port)
-        with smtplib.SMTP(SMTP_SERVER, port, timeout=_SMTP_TIMEOUT) as srv:
-            srv.ehlo()
-            srv.starttls()
-            srv.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            srv.sendmail(EMAIL_SENDER, EMAIL_RECIPIENT, raw)
-        log.info("SMTP: email sent via STARTTLS (%s:%d)", SMTP_SERVER, port)
+    with smtplib.SMTP(SMTP_SERVER, 587, timeout=_SMTP_TIMEOUT) as srv:
+        srv.ehlo()
+        srv.starttls()
+        srv.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        srv.sendmail(EMAIL_SENDER, EMAIL_RECIPIENT, raw)
+    log.info("SMTP: sent via STARTTLS 587")
 
-    if SMTP_PORT == 587:
-        # Caller explicitly requested STARTTLS; try it, fall back to SSL 465.
-        try:
-            _try_starttls(587)
-            return
-        except Exception as e1:
-            log.warning("STARTTLS on 587 failed (%s); falling back to SSL 465.", e1)
-        _try_ssl(465)
+
+def _send_html_email(subject: str, html_body: str) -> None:
+    """Route to Resend (if API key set) or SMTP fallback."""
+    if not EMAIL_RECIPIENT:
+        raise EnvironmentError("EMAIL_RECIPIENT is not set.")
+
+    if RESEND_API_KEY:
+        log.info("Email transport: Resend API")
+        _send_via_resend(subject, html_body)
     else:
-        # Default: SSL on the configured port (465); fall back to STARTTLS 587.
-        try:
-            _try_ssl(SMTP_PORT)
-            return
-        except Exception as e1:
-            log.warning("SSL on %d failed (%s); falling back to STARTTLS 587.", SMTP_PORT, e1)
-        _try_starttls(587)
+        log.info("Email transport: SMTP fallback (RESEND_API_KEY not set)")
+        _send_via_smtp(subject, html_body)
+
 
 
 def send_report_ready_email(report_data: dict) -> None:
