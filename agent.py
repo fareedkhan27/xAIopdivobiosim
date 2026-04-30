@@ -31,7 +31,7 @@ from xai_sdk.sync.client import Client
 from xai_sdk.chat import user as user_msg
 
 from db import get_latest_report, init_db, save_report, MODEL_FAST, MODEL_FLAGSHIP
-from notifications import send_report_ready_email
+from notifications import send_report_ready_email, send_high_risk_alert
 from prompts import OPDIVO_SURVEILLANCE_PROMPT
 
 load_dotenv()
@@ -356,26 +356,29 @@ def run_surveillance(use_batch: bool = True, run_token: str | None = None, model
 
     try:
         _threats = data.get("my_markets_threat", []) or []
-        _companies = data.get("companies", []) or []
-        _updates = data.get("verified_updates", []) or []
-        _high_risk_count = sum(
-            1 for t in _threats
+        _high_risk = [
+            t for t in _threats
             if str(t.get("risk_level", "")).strip().lower() == "high"
-        )
-        _launched_count = sum(
-            1 for c in _companies
-            if "launch" in str(c.get("phase", "")).lower()
-        )
+        ]
+        _high_risk_count = len(_high_risk)
 
-        _set_status("emailing", "Sending report-ready email alert")
-        log.info(
-            "Calling send_report_ready_email() [threats=%d high_risk=%d launched=%d updates=%d]",
-            len(_threats), _high_risk_count, _launched_count, len(_updates),
-        )
-        send_report_ready_email(data)
-        log.info("send_report_ready_email() succeeded.")
+        if _high_risk_count > 0:
+            _set_status("emailing", f"Sending High-Risk alert email ({_high_risk_count} threats)")
+            log.info(
+                "HIGH-RISK threats detected (%d) — sending high-risk alert email.",
+                _high_risk_count,
+            )
+            send_high_risk_alert(data)
+            log.info("send_high_risk_alert() succeeded.")
+        else:
+            log.info(
+                "No High-risk threats detected — skipping email alert "
+                "(total threats tracked: %d).",
+                len(_threats),
+            )
+            _set_status("emailing", "No High-risk threats — email alert skipped")
     except Exception as exc:
-        log.warning("send_report_ready_email() failed (non-fatal): %s", exc)
+        log.warning("Email alert failed (non-fatal): %s", exc)
 
     t_end = datetime.now()
     duration = (t_end - t_start).total_seconds()
