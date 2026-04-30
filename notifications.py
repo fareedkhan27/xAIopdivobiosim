@@ -381,6 +381,88 @@ def send_high_risk_alert(report_data: dict) -> None:
     _send_html_email(subject=subject, html_body=html_body)
 
 
+def send_test_email() -> None:
+    """Send a test email with synthetic High-risk threat data.
+
+    Exercises the full send_high_risk_alert() template end-to-end so the
+    operations team can verify formatting and delivery without running a
+    live surveillance job.
+    """
+    test_data: dict = {
+        "executive_summary": (
+            "[TEST] This is a system-generated test email from the Opdivo Biosimilar "
+            "Surveillance platform. No real threats are reported. "
+            "Two synthetic High-risk entries are included below to verify the email "
+            "template, table rendering, and recommended actions formatting."
+        ),
+        "my_markets_threat": [
+            {
+                "country": "Brazil",
+                "region": "LATAM",
+                "operational_model": "LPM",
+                "company": "Biocon Biologics [TEST]",
+                "biosimilar": "nivolumab-bcdb [TEST]",
+                "phase": "BLA Submitted",
+                "est_launch": "Q3 2026",
+                "risk_level": "High",
+                "risk_rationale": (
+                    "[TEST] Regulatory submission filed with ANVISA; "
+                    "pricing 35% below Opdivo list price expected at launch."
+                ),
+                "recommended_actions": [
+                    "Accelerate government tender contracting in Brazil",
+                    "Engage key oncologists with clinical differentiation data",
+                    "Prepare rapid response pricing model",
+                ],
+                "source": "https://example.com/test",
+            },
+            {
+                "country": "Egypt",
+                "region": "MEA",
+                "operational_model": "OPM",
+                "company": "Samsung Bioepis [TEST]",
+                "biosimilar": "SB17 nivolumab [TEST]",
+                "phase": "Phase III",
+                "est_launch": "2027",
+                "risk_level": "High",
+                "risk_rationale": (
+                    "[TEST] Phase III completion imminent; "
+                    "distributor partnerships confirmed for MENA region."
+                ),
+                "recommended_actions": [
+                    "Strengthen distributor exclusivity agreements in Egypt",
+                    "Monitor Phase III readout and file regulatory objections if grounds exist",
+                ],
+                "source": "https://example.com/test",
+            },
+        ],
+    }
+
+    # Build the HTML body via send_high_risk_alert() but override the subject
+    # to clearly mark it as a test.  We capture the outgoing call, swap the
+    # subject, and then hand off to the real SMTP sender.
+    import notifications as _self
+    _captured: list[dict] = []
+
+    def _capture(subject: str, html_body: str) -> None:  # type: ignore[misc]
+        _captured.append({"subject": subject, "html_body": html_body})
+
+    _orig = _self._send_html_email
+    _self._send_html_email = _capture  # type: ignore[attr-defined]
+    try:
+        send_high_risk_alert(test_data)
+    finally:
+        _self._send_html_email = _orig  # type: ignore[attr-defined]
+
+    if not _captured:
+        raise RuntimeError("Test email body could not be generated.")
+
+    _orig(
+        subject="\U0001f9ea Test Email \u2014 Opdivo Biosimilar Surveillance Alert System",
+        html_body=_captured[0]["html_body"],
+    )
+
+
 def send_email_alert(executive_summary: str, subject: str = "🔔 New Opdivo Biosimilar Report Ready") -> None:
     """Backward-compatible wrapper for legacy calls."""
     report_data = {

@@ -786,6 +786,21 @@ with st.sidebar:
         st.caption("No report yet. Click ▶ Run Now.")
 
     st.markdown("---")
+    # ── Test Email ─────────────────────────────────────────────────────────
+    if st.button(
+        "🧪 Send Test Email",
+        use_container_width=True,
+        help="Send a synthetic high-risk alert to verify the email system",
+    ):
+        with st.spinner("Sending test email…"):
+            try:
+                from notifications import send_test_email as _send_test
+                _send_test()
+                st.success("✅ Test email sent! Check your inbox.")
+            except Exception as _te:
+                st.error(f"❌ Test email failed: {_te}")
+
+    st.markdown("---")
     if st.button("🔒 Log Out", use_container_width=True):
         st.session_state["authenticated"] = False
         st.rerun()
