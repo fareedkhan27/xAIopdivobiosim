@@ -313,6 +313,7 @@ def run_surveillance(use_batch: bool = True, run_token: str | None = None, model
     Returns the parsed data dict.
     """
     active_model = model or MODEL_FAST_DEFAULT
+    mode_label = "BATCH" if use_batch else "SYNC"
     t_start = datetime.now()
     run_token = run_token or t_start.isoformat()
     log.info("=== Surveillance START [mode=%s model=%s] at %s ===", mode_label, active_model, t_start.isoformat())
