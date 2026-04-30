@@ -22,7 +22,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from db import get_all_reports, get_latest_report, get_report_by_id, init_db, MODEL_FAST, MODEL_FLAGSHIP
+from db import get_all_reports, get_latest_report, get_report_by_id, get_report_count, init_db, MODEL_FAST, MODEL_FLAGSHIP
 
 # ─── Page config ─────────────────────────────────────────────────────────────
 # MUST be the very first Streamlit call in the script.
@@ -50,7 +50,11 @@ import logging as _logging
 _logging.basicConfig(level=_logging.INFO)
 _log = _logging.getLogger(__name__)
 try:
-    init_db()
+    # Initialise DB schema on every startup — safe: uses CREATE TABLE IF NOT EXISTS
+# and ALTER TABLE ADD COLUMN only. No data is ever dropped or deleted.
+# On Railway: mount a persistent Volume at the DB_PATH location so the
+# SQLite file survives redeploys (set DB_PATH env var to e.g. /data/opdivo_reports.db).
+init_db()
     _log.info("Database initialized successfully.")
 except Exception as _db_err:
     _log.error("Database initialization failed: %s", _db_err)
