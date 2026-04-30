@@ -1,7 +1,16 @@
 """
 notifications.py — Gmail SMTP email alerts.
+
+SMTP strategy:
+  • Primary:  port 465 SSL  (smtplib.SMTP_SSL)  — works on Railway and most hosts.
+  • Fallback: port 587 STARTTLS (smtplib.SMTP)  — used when SMTP_PORT is explicitly
+              set to 587 via environment variable, or when the SSL attempt fails.
+
+Set SMTP_PORT=465 (or leave unset) for Railway deployments.
+Set SMTP_PORT=587 only if your mail provider requires STARTTLS.
 """
 
+import logging
 import os
 import smtplib
 from datetime import datetime
@@ -12,31 +21,69 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
-EMAIL_SENDER = os.getenv("EMAIL_SENDER", "")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+log = logging.getLogger(__name__)
+
+SMTP_SERVER   = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", 465))   # 465 = SSL (Railway-safe default)
+EMAIL_SENDER    = os.getenv("EMAIL_SENDER", "")
+EMAIL_PASSWORD  = os.getenv("EMAIL_PASSWORD", "")
 EMAIL_RECIPIENT = os.getenv("EMAIL_RECIPIENT", "")
+
+_SMTP_TIMEOUT = 20  # seconds — fail fast rather than hanging
 
 
 def _send_html_email(subject: str, html_body: str) -> None:
-    """Low-level SMTP sender for HTML emails."""
+    """Low-level SMTP sender for HTML emails.
+
+    Tries SSL (port 465) first; falls back to STARTTLS (port 587) if the
+    configured port is 587 or if the SSL connection is refused.
+    """
     if not all([EMAIL_SENDER, EMAIL_PASSWORD, EMAIL_RECIPIENT]):
         raise EnvironmentError(
-            "EMAIL_SENDER, EMAIL_PASSWORD, and EMAIL_RECIPIENT must be set in .env"
+            "EMAIL_SENDER, EMAIL_PASSWORD, and EMAIL_RECIPIENT must be set "
+            "in Railway environment variables (or .env for local dev)."
         )
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = EMAIL_SENDER
-    msg["To"] = EMAIL_RECIPIENT
+    msg["From"]    = EMAIL_SENDER
+    msg["To"]      = EMAIL_RECIPIENT
     msg.attach(MIMEText(html_body, "html"))
 
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        server.sendmail(EMAIL_SENDER, EMAIL_RECIPIENT, msg.as_string())
+    raw = msg.as_string()
+
+    def _try_ssl(port: int) -> None:
+        log.info("SMTP: trying SSL on %s:%d", SMTP_SERVER, port)
+        with smtplib.SMTP_SSL(SMTP_SERVER, port, timeout=_SMTP_TIMEOUT) as srv:
+            srv.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            srv.sendmail(EMAIL_SENDER, EMAIL_RECIPIENT, raw)
+        log.info("SMTP: email sent via SSL (%s:%d)", SMTP_SERVER, port)
+
+    def _try_starttls(port: int) -> None:
+        log.info("SMTP: trying STARTTLS on %s:%d", SMTP_SERVER, port)
+        with smtplib.SMTP(SMTP_SERVER, port, timeout=_SMTP_TIMEOUT) as srv:
+            srv.ehlo()
+            srv.starttls()
+            srv.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            srv.sendmail(EMAIL_SENDER, EMAIL_RECIPIENT, raw)
+        log.info("SMTP: email sent via STARTTLS (%s:%d)", SMTP_SERVER, port)
+
+    if SMTP_PORT == 587:
+        # Caller explicitly requested STARTTLS; try it, fall back to SSL 465.
+        try:
+            _try_starttls(587)
+            return
+        except Exception as e1:
+            log.warning("STARTTLS on 587 failed (%s); falling back to SSL 465.", e1)
+        _try_ssl(465)
+    else:
+        # Default: SSL on the configured port (465); fall back to STARTTLS 587.
+        try:
+            _try_ssl(SMTP_PORT)
+            return
+        except Exception as e1:
+            log.warning("SSL on %d failed (%s); falling back to STARTTLS 587.", SMTP_PORT, e1)
+        _try_starttls(587)
 
 
 def send_report_ready_email(report_data: dict) -> None:
