@@ -1297,12 +1297,18 @@ elif page == "📣 Social Noise":
         posts = [p for p in social if (not sent_filter or p.get("sentiment") in sent_filter)]
         for post in posts:
             _post_url = (post.get("url") or "").strip()
+            _url_verified = bool(post.get("url_verified", False))
             _platform = (post.get("platform") or "News").strip()
-            _link_html = (
-                f'<a class="post-link" href="{_post_url}" target="_blank" rel="noopener noreferrer">'
-                f'🔗 View Original</a>'
-                if _post_url else ""
-            )
+            if _post_url and _url_verified:
+                _link_html = (
+                    f'<a class="post-link" href="{_post_url}" target="_blank" rel="noopener noreferrer">'
+                    f'🔗 View Original</a>'
+                )
+            elif _post_url and not _url_verified:
+                # URL present but not confirmed — do not render as clickable
+                _link_html = '<span style="font-size:0.78rem;color:#6b7280;">⚠️ Source link unverified</span>'
+            else:
+                _link_html = '<span style="font-size:0.78rem;color:#6b7280;">No verifiable link available</span>'
             st.markdown(
                 f'<div class="post-card">'
                 f'<div class="post-header">'

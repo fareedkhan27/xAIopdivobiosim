@@ -81,18 +81,26 @@ RECOMMENDED ACTIONS — for each threat entry, select 2–3 from this standard m
 SECTION 3 — SOCIAL & MARKET INTELLIGENCE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Search X (Twitter), LinkedIn, and pharmaceutical news outlets for the last 30 days of
-discussion on nivolumab biosimilars. Expand this sweep across all major public discussion
-channels: X (Twitter), LinkedIn, Reddit, Facebook groups, pharma forums, news comment sections,
-patient advocacy sites, investor commentary, and other credible public discussion boards.
-Collect diverse signals around Opdivo / nivolumab biosimilars including: pricing announcements,
+Using your x_search, web_search, and browse_page tools, sweep ALL major public discussion
+channels published in the last 30 days: X (Twitter), LinkedIn, Reddit, Facebook groups,
+pharma forums, news comment sections, patient advocacy sites, investor commentary, and other
+credible public discussion boards.
+
+Collect real, verifiable signals around Opdivo / nivolumab biosimilars: pricing announcements,
 tender outcomes, physician switching commentary, patient advocacy sentiment, launch rumours,
 market access discussion, analyst forecasts, payer commentary, and competitive sentiment.
-Every social_noise entry must clearly identify the originating platform using the platform field
-(for example: X, LinkedIn, Reddit, Forum, News, Facebook, Patient Advocacy, or Blog).
-When sourcing any post or article, always include the original public URL when it is available.
-For X posts, use this exact format when possible: https://x.com/username/status/1234567890.
-If the exact source URL cannot be verified, use null rather than inventing a link.
+
+URL INTEGRITY RULES — strictly enforced:
+  • Every social_noise entry must clearly identify the originating platform (X, LinkedIn,
+    Reddit, Forum, News, Facebook, Patient Advocacy, Blog, etc.).
+  • For each entry, include the original source URL ONLY if you have directly retrieved
+    it from a tool result (x_search hit, web_search result, browse_page URL).
+  • For X posts, use exactly: https://x.com/username/status/[real_tweet_id]
+  • NEVER invent, guess, or construct a URL. If you cannot directly confirm a URL from
+    your tool results, set "url": null and "url_verified": false.
+  • If a URL was directly seen in a tool result, set "url_verified": true.
+  • A post with url_verified: false is still valid and valuable — do not omit it.
+    Paraphrase the post content accurately instead.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT FORMAT — STRICT JSON ONLY
@@ -137,6 +145,7 @@ Every field listed below is REQUIRED. Use null for unknown values (never omit a 
       "user": "@handle or publication name",
       "date": "YYYY-MM-DD",
       "url": "https://x.com/username/status/1234567890 | https://... | null",
+      "url_verified": true,
       "post": "Verbatim quote or accurate paraphrase — max 280 characters",
       "sentiment": "Positive | Neutral | Negative",
       "signal_type": "Pricing | Tender | Clinical | Regulatory | Physician sentiment | Patient advocacy | Analyst forecast"
@@ -178,6 +187,9 @@ HARD RULES — violations will break downstream systems
 7. Include a minimum of: 10 companies, 6 verified_updates, 6 social_noise entries.
 8. All dates MUST be in YYYY-MM-DD format (or YYYY / Qn YYYY for est_launch).
 9. Do NOT fabricate data. If genuinely unknown, use null (not "Unknown" or "TBD" for dates).
+11. NEVER invent or hallucinate URLs in social_noise or verified_updates. Only include a URL
+    if you directly retrieved it from a tool result. Set url_verified: false and url: null
+    for any post where the original URL could not be confirmed from tool output.
 10. est_launch for launched products = the actual launch year, not TBD.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

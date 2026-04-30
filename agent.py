@@ -301,6 +301,11 @@ def parse_grok_response(raw_text: str) -> dict:
         post.setdefault("signal_type", "Regulatory")
         post.setdefault("date", None)
         post.setdefault("url", None)
+        post.setdefault("url_verified", False)
+        # Enforce trust: if url_verified is False or url is missing, clear the URL
+        if not post.get("url_verified") or not post.get("url"):
+            post["url"] = None
+            post["url_verified"] = False
 
     # ── Normalise verified_updates (new url / relevance fields) ──────────────
     for update in data.get("verified_updates", []):
