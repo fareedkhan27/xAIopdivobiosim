@@ -269,6 +269,8 @@ def _model_tag(model_version: str) -> str:
         return "Claude"
     if "gpt" in mv:
         return "GPT"
+    if "gemini" in mv:
+        return "Gemini"
     if "deepseek" in mv:
         return "DeepSeek"
     return "Legacy"
@@ -281,6 +283,7 @@ def _model_badge(model_version: str) -> tuple[str, str]:
         "Grok": ("#0F766E", "#FFFFFF"),
         "Claude": ("#7C3AED", "#FFFFFF"),
         "GPT": ("#2563EB", "#FFFFFF"),
+        "Gemini": ("#1A73E8", "#FFFFFF"),
         "DeepSeek": ("#EA580C", "#FFFFFF"),
         "Legacy": ("#6B7280", "#FFFFFF"),
     }
@@ -449,6 +452,7 @@ with st.sidebar:
         "📅 Timeline",
         "🌍 LR Markets",
         "🕑 History",
+        "🧪 Model Lab",
     ]
     # Honour a programmatic navigation request (e.g. "View History" link)
     if st.session_state.get("_goto_page"):
@@ -471,7 +475,7 @@ with st.sidebar:
     _MODEL_OPTIONS = {
         "🚀 Grok 4.1 Fast (xAI — Live web + X)": "grok-4-1-fast-reasoning",
         "🧠 Claude Sonnet 4.5 (OpenRouter)": "anthropic/claude-sonnet-4.5",
-        "📊 GPT 5.5 (OpenRouter)": "openai/gpt-5.5",
+        "🔍 Gemini 2.5 Pro (OpenRouter — Live Google Search)": "google/gemini-2.5-pro-preview-03-25",
         "💡 DeepSeek V4 Pro (OpenRouter)": "deepseek/deepseek-v4-pro",
     }
     _MODEL_DISPLAY = list(_MODEL_OPTIONS.keys())
@@ -1941,3 +1945,147 @@ elif page == "🕑 History":
             if st.button("Load", key=f"_load_{rep['id']}", use_container_width=True, help="Load this report onto the Dashboard"):
                 st.session_state["_load_report_id"] = rep["id"]
                 st.rerun()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 9. MODEL LAB
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "🧪 Model Lab":
+    st.title("🧪 Model Comparison Lab")
+    st.caption("Compare how different AI models analyzed the same surveillance date")
+
+    # Build reverse mapping: slug → display name
+    _SLUG_TO_DISPLAY = {v: k for k, v in _MODEL_OPTIONS.items()}
+
+    # Get all reports with model_version
+    _all = get_all_reports()
+    _dated = {}
+    for r in _all:
+        _d = r.get("run_date", "")[:10]
+        _m = r.get("model_version", "Legacy")
+        if _d not in _dated:
+            _dated[_d] = {}
+        _dated[_d][_m] = r
+
+    _dates = sorted(_dated.keys(), reverse=True)
+
+    if not _dates:
+        st.info("No reports found. Run surveillance with different models to enable comparison.")
+    else:
+        _sel_date = st.selectbox("Select Run Date", _dates)
+        _reports = _dated[_sel_date]
+
+        st.markdown(f"### Reports for {_sel_date}")
+        st.caption(f"Found {len(_reports)} model(s) for this date")
+
+        # ── EXECUTIVE SUMMARY SHOWDOWN ──
+        st.markdown("---")
+        st.subheader("🥊 Executive Summary Showdown")
+        _cols = st.columns(len(_reports))
+        for i, (model, report) in enumerate(_reports.items()):
+            raw = json.loads(report.get("raw_json", "{}"))
+            _friendly = _SLUG_TO_DISPLAY.get(model, model)
+            with _cols[i]:
+                st.markdown(f"**{_friendly}**")
+                _summary = raw.get("executive_summary", "No summary")
+                st.info(_summary[:250] if len(_summary) > 250 else _summary)
+                if len(_summary) > 250:
+                    st.caption(f"... ({len(_summary)} chars total)")
+
+        # ── SCORING MATRIX ──
+        st.markdown("---")
+        st.subheader("📊 Quality Scorecard")
+
+        _scores = []
+        for model, report in _reports.items():
+            raw = json.loads(report.get("raw_json", "{}"))
+            _friendly = _SLUG_TO_DISPLAY.get(model, model)
+
+            # Metric 1: URL reachability
+            _verified = [u for u in raw.get("verified_updates", []) if u.get("url") and u.get("url_verified")]
+            _total_updates = len(raw.get("verified_updates", []))
+            _url_score = len(_verified) / max(_total_updates, 1) * 100
+
+            # Metric 2: Company coverage
+            _companies = raw.get("companies", [])
+            _company_count = len(_companies)
+            _coverage_score = min(_company_count / 16 * 100, 100)
+
+            # Metric 3: Country coverage
+            _threats = raw.get("my_markets_threat", [])
+            _countries_covered = len(set(t.get("country") for t in _threats if t.get("country")))
+            _country_score = min(_countries_covered / 37 * 100, 100)
+
+            # Metric 4: Executive summary length (quality proxy)
+            _summary_len = len(raw.get("executive_summary", ""))
+            _summary_score = min(_summary_len / 120 * 100, 100) if _summary_len > 0 else 0
+
+            _avg = (_url_score + _coverage_score + _country_score + _summary_score) / 4
+
+            _scores.append({
+                "model": _friendly,
+                "url_score": round(_url_score, 1),
+                "coverage_score": round(_coverage_score, 1),
+                "country_score": round(_country_score, 1),
+                "summary_score": round(_summary_score, 1),
+                "overall": round(_avg, 1),
+                "companies_found": _company_count,
+                "urls_verified": len(_verified),
+                "countries_covered": _countries_covered,
+            })
+
+        _score_df = {
+            "Model": [s["model"] for s in _scores],
+            "URL Quality %": [s["url_score"] for s in _scores],
+            "Company Coverage %": [s["coverage_score"] for s in _scores],
+            "Country Coverage %": [s["country_score"] for s in _scores],
+            "Summary Quality %": [s["summary_score"] for s in _scores],
+            "Overall Score": [s["overall"] for s in _scores],
+        }
+        st.dataframe(_score_df, use_container_width=True, hide_index=True)
+
+        # Highlight winner
+        _winner = max(_scores, key=lambda x: x["overall"])
+        st.success(f"🏆 Winner for {_sel_date}: {_winner['model']} (Overall: {_winner['overall']}%)")
+
+        # ── DETAIL COMPARISON ──
+        st.markdown("---")
+        st.subheader("🔍 Detailed Comparison")
+
+        _comp_tabs = st.tabs([s["model"] for s in _scores])
+        for i, (model, report) in enumerate(_reports.items()):
+            raw = json.loads(report.get("raw_json", "{}"))
+            with _comp_tabs[i]:
+                _c1, _c2 = st.columns(2)
+                with _c1:
+                    st.metric("Companies Found", len(raw.get("companies", [])))
+                    st.metric("Verified Updates", len(raw.get("verified_updates", [])))
+                    st.metric("Social Noise Items", len(raw.get("social_noise", [])))
+                with _c2:
+                    _threats = raw.get("my_markets_threat", [])
+                    _high = len([t for t in _threats if t.get("risk_level") == "High"])
+                    _med = len([t for t in _threats if t.get("risk_level") == "Medium"])
+                    st.metric("High Risk Markets", _high)
+                    st.metric("Medium Risk Markets", _med)
+
+                with st.expander("View Full Executive Summary"):
+                    st.write(raw.get("executive_summary", "No summary"))
+
+                with st.expander("View Verified Updates"):
+                    for u in raw.get("verified_updates", []):
+                        st.markdown(f"- **{u.get('title', 'Untitled')}** ({u.get('source', 'Unknown')})")
+                        if u.get("url"):
+                            st.caption(f"[Source ↗]({u['url']})")
+
+        # ── COST COMPARISON ──
+        st.markdown("---")
+        st.subheader("💰 Cost Comparison")
+        _cost_map = {
+            "grok-4-1-fast-reasoning": "$0.00 (xAI direct)",
+            "anthropic/claude-sonnet-4.5": "~$0.45",
+            "google/gemini-2.5-pro-preview-03-25": "~$0.30",
+            "deepseek/deepseek-v4-pro": "~$0.08",
+        }
+        for model in _reports.keys():
+            _friendly = _SLUG_TO_DISPLAY.get(model, model)
+            st.caption(f"{_friendly}: {_cost_map.get(model, 'N/A')}")

@@ -162,6 +162,22 @@ def get_report_by_id(report_id: int) -> dict | None:
         conn.close()
 
 
+def get_reports_by_date(run_date: str) -> list[dict]:
+    """Return all full report rows for a given run_date prefix (YYYY-MM-DD).
+
+    Read-only — never modifies any data.
+    """
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM reports WHERE run_date LIKE ? ORDER BY id DESC",
+            (run_date + "%",),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def get_report_count() -> int:
     """Return the total number of stored reports.
 
