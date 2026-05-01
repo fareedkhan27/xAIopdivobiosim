@@ -25,14 +25,14 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import date as _date, datetime
 
 from dotenv import load_dotenv
 from xai_sdk.sync.client import Client
 from xai_sdk.chat import user as user_msg
 
 from db import get_latest_report, init_db, save_report, MODEL_FAST, MODEL_FLAGSHIP
-from prompts import OPDIVO_SURVEILLANCE_PROMPT
+from prompts import build_surveillance_prompt
 
 load_dotenv()
 
@@ -144,7 +144,7 @@ def _call_chat(prompt: str, model: str | None = None, timeout_seconds: int = 180
 # Batch API  (50 % cost savings vs. synchronous calls)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def submit_batch_job(model: str | None = None) -> str:
+def submit_batch_job(prompt_text: str, model: str | None = None) -> str:
     """Creates a named Batch, adds the surveillance chat request, returns batch_id."""
     _model = model or MODEL
     # 1. Create an empty named batch
@@ -159,7 +159,7 @@ def submit_batch_job(model: str | None = None) -> str:
         temperature=0,
         batch_request_id=BATCH_REQUEST_ID,
     )
-    chat.append(user_msg(OPDIVO_SURVEILLANCE_PROMPT))
+    chat.append(user_msg(prompt_text))
 
     # 3. Seal + start
     client.batch.add(batch_id=batch_id, batch_requests=[chat])
@@ -365,13 +365,25 @@ def run_surveillance(use_batch: bool = True, run_token: str | None = None, model
 
     init_db()
 
+    # Build the prompt at run-time so the model receives today's real date and
+    # (when available) the prior report date for incremental-reuse decisions.
+    prior_row = get_latest_report() or {}
+    prior_run_date: _date | None = None
+    try:
+        prior_raw = (prior_row.get("run_date") or "")[:10] if prior_row else ""
+        if prior_raw:
+            prior_run_date = _date.fromisoformat(prior_raw)
+    except (ValueError, TypeError):
+        prior_run_date = None
+    prompt_text = build_surveillance_prompt(_date.today(), prior_run_date)
+
     if use_batch:
-        batch_id = submit_batch_job(model=active_model)
+        batch_id = submit_batch_job(prompt_text, model=active_model)
         raw_text = poll_batch_job(batch_id)
     else:
         log.info("Running SYNC call — model=%s", active_model)
         _set_status("connecting", f"Sending prompt to {active_model} via Sync API")
-        raw_text = _call_chat(OPDIVO_SURVEILLANCE_PROMPT, model=active_model)
+        raw_text = _call_chat(prompt_text, model=active_model)
 
     _set_status("parsing", "Parsing JSON response from Grok")
     data = parse_grok_response(raw_text)
