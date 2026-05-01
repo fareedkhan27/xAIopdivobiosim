@@ -27,6 +27,9 @@ import streamlit as st
 
 from db import get_all_reports, get_latest_report, get_report_by_id, init_db, MODEL_FAST, MODEL_FLAGSHIP
 
+# ─── Global thread tracker (prevents multiple concurrent surveillance jobs) ───
+_ACTIVE_THREAD: threading.Thread | None = None
+
 # ─── Page config ─────────────────────────────────────────────────────────────
 # MUST be the very first Streamlit call in the script.
 st.set_page_config(
@@ -550,6 +553,13 @@ def reconcile_job_state_from_agent() -> bool:
     except Exception:
         return False
 
+    _start = st.session_state.get("job_start_time")
+    if _start and (datetime.now() - _start).total_seconds() > 18000:  # 5 hours
+        st.session_state["surveillance_running"] = False
+        st.session_state["run_status"] = "error: Job timed out (5h max)"
+        st.session_state["job_start_time"] = None
+        return True
+
     _phase = _status.get("phase", "idle")
     _detail = _status.get("detail", "")
     _run_token = str(_status.get("run_token", "") or "")
@@ -685,19 +695,23 @@ with st.sidebar:
             elif _fs_code != _FLAGSHIP_CODE:
                 st.error("❌ Invalid access code.")
             else:
-                _job_token = datetime.now().isoformat()
-                st.session_state["surveillance_running"] = True
-                st.session_state["run_status"] = "running"
-                st.session_state["job_start_time"] = datetime.fromisoformat(_job_token)
-                st.session_state["active_job_token"] = _job_token
-                st.session_state["active_model"] = MODEL_FLAGSHIP
-                t = threading.Thread(
-                    target=run_surveillance_thread,
-                    args=(True, _job_token, MODEL_FLAGSHIP),
-                    daemon=True,
-                )
-                t.start()
-                st.rerun()
+                if _ACTIVE_THREAD is not None and _ACTIVE_THREAD.is_alive():
+                    st.warning("A surveillance job is already running. Please wait.")
+                    st.rerun()
+                else:
+                    _job_token = datetime.now().isoformat()
+                    st.session_state["surveillance_running"] = True
+                    st.session_state["run_status"] = "running"
+                    st.session_state["job_start_time"] = datetime.fromisoformat(_job_token)
+                    st.session_state["active_job_token"] = _job_token
+                    st.session_state["active_model"] = MODEL_FLAGSHIP
+                    _ACTIVE_THREAD = threading.Thread(
+                        target=run_surveillance_thread,
+                        args=(True, _job_token, MODEL_FLAGSHIP),
+                        daemon=True,
+                    )
+                    _ACTIVE_THREAD.start()
+                    st.rerun()
 
     # ── In-progress indicator ──────────────────────────────────────────────
     # (sleep + rerun is handled by the full-page banner in the main content area)
@@ -942,10 +956,10 @@ if st.session_state["surveillance_running"]:
         unsafe_allow_html=True,
     )
 
-    # Poll every 5 s while the job is still in flight so the UI stays
+    # Poll every 15 s while the job is still in flight so the UI stays
     # responsive.  (The fast-path above exits immediately on completion.)
     if _job_phase not in {"done", "complete", "error"}:
-        _time.sleep(5)
+        _time.sleep(15)  # Polling interval — 15s reduces server blocking during long jobs
     st.rerun()
 
 # ─── Page routing ─────────────────────────────────────────────────────────────
