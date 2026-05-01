@@ -24,6 +24,7 @@ import logging
 import os
 import threading
 import time
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date as _date, datetime
 
@@ -140,8 +141,55 @@ def _call_chat(prompt: str, model: str | None = None, timeout_seconds: int = 180
             ) from exc
 
 
+def _call_openrouter(prompt: str, model: str, timeout_seconds: int = 1800) -> str:
+    """Call any model via OpenRouter (Claude, GPT, DeepSeek, etc.)."""
+    _api_key = os.getenv("OPENROUTER_API_KEY")
+    if not _api_key:
+        raise EnvironmentError(
+            "OPENROUTER_API_KEY is not set. Add it to your .env file to use non-Grok models."
+        )
+    _set_status("connecting", f"Opening OpenRouter chat with {model}")
+    payload = json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {_api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://biosimintel.com",
+            "X-Title": "Opdivo Biosimilar Surveillance",
+        },
+        method="POST",
+    )
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        log.error("OpenRouter call failed: %s", exc)
+        _set_status("error", f"OpenRouter call failed: {exc}")
+        raise RuntimeError(f"OpenRouter API error: {exc}") from exc
+    elapsed = time.time() - t0
+    log.info("OpenRouter call completed in %.1fs", elapsed)
+    _set_status("received", f"Response received in {elapsed:.0f}s — parsing JSON")
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    return content
+
+
+def _call_model(prompt: str, model: str | None = None, timeout_seconds: int = 1800) -> str:
+    """Dispatcher — routes to xAI Grok or OpenRouter based on model name."""
+    _model = model or MODEL
+    if _model.startswith("grok-"):
+        return _call_chat(prompt, model=_model, timeout_seconds=timeout_seconds)
+    return _call_openrouter(prompt, model=_model, timeout_seconds=timeout_seconds)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Batch API  (50 % cost savings vs. synchronous calls)
+# Batch API
 # ─────────────────────────────────────────────────────────────────────────────
 
 def submit_batch_job(prompt_text: str, model: str | None = None) -> str:

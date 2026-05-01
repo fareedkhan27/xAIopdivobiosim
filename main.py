@@ -25,7 +25,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from db import get_all_reports, get_latest_report, get_report_by_id, init_db, MODEL_FAST, MODEL_FLAGSHIP
+from db import get_all_reports, get_latest_report, get_report_by_id, init_db, MODEL_FAST
 from theme import _PRESENTATION_CSS, _DARK_CSS
 
 # ─── Global thread tracker (prevents multiple concurrent surveillance jobs) ───
@@ -260,6 +260,39 @@ def _esc(s: object) -> str:
     return html.escape(str(s), quote=True) if s is not None else ""
 
 
+def _model_tag(model_version: str) -> str:
+    """Return a short display tag for a model version string."""
+    mv = model_version.lower()
+    if "grok" in mv:
+        return "Grok"
+    if "claude" in mv:
+        return "Claude"
+    if "gpt" in mv:
+        return "GPT"
+    if "deepseek" in mv:
+        return "DeepSeek"
+    return "Legacy"
+
+
+def _model_badge(model_version: str) -> tuple[str, str]:
+    """Return (badge_html, border_color) for a model version."""
+    tag = _model_tag(model_version)
+    colors = {
+        "Grok": ("#0F766E", "#FFFFFF"),
+        "Claude": ("#7C3AED", "#FFFFFF"),
+        "GPT": ("#2563EB", "#FFFFFF"),
+        "DeepSeek": ("#EA580C", "#FFFFFF"),
+        "Legacy": ("#6B7280", "#FFFFFF"),
+    }
+    bg, fg = colors.get(tag, ("#6B7280", "#FFFFFF"))
+    badge = (
+        f'<span style="background:{bg};color:{fg};border-radius:4px;'
+        f'padding:2px 8px;font-size:0.72rem;font-weight:700;letter-spacing:0.02em;">'
+        f'{tag}</span>'
+    )
+    return badge, bg
+
+
 def load_report_data(report: dict | None) -> dict:
     """Parse raw_json from a DB row into a Python dict."""
     if not report:
@@ -433,40 +466,71 @@ with st.sidebar:
     # Single read of the flag — avoids repeated dict lookups and keeps logic clear
     job_running: bool = bool(st.session_state["surveillance_running"])
 
-    # ── Flagship Run (access-code protected) ───────────────────────────────
+    # ── Model selection + Flagship Run ─────────────────────────────────────
     _FLAGSHIP_CODE = os.getenv("FLAGSHIP_CODE", "flagship2026")
-    with st.expander("🚀 Run Flagship Model", expanded=False):
-        st.caption("Higher accuracy · Significantly slower · Requires access code")
-        _fs_code = st.text_input("Access code", type="password", key="_flagship_code_input", label_visibility="collapsed", placeholder="Enter access code")
-        _fs_clicked = st.button(
-            "🚀 Run Flagship",
-            disabled=job_running,
-            use_container_width=True,
-            key="_flagship_btn",
-        )
-        if _fs_clicked:
-            if st.session_state["surveillance_running"]:
-                st.warning("⚠️ A job is already running.")
-            elif _fs_code != _FLAGSHIP_CODE:
-                st.error("❌ Invalid access code.")
+    _MODEL_OPTIONS = {
+        "🚀 Grok 4.1 Fast (xAI — Live web + X)": "grok-4-1-fast-reasoning",
+        "🧠 Claude 3.7 Sonnet (OpenRouter)": "anthropic/claude-3.7-sonnet",
+        "📊 GPT-4.1 (OpenRouter)": "openai/gpt-4.1",
+        "💡 DeepSeek Chat (OpenRouter)": "deepseek/deepseek-chat",
+    }
+    _MODEL_DISPLAY = list(_MODEL_OPTIONS.keys())
+    _selected_display = st.selectbox(
+        "🤖 Select Analysis Model",
+        _MODEL_DISPLAY,
+        index=0,
+        key="_model_select",
+    )
+    _selected_model = _MODEL_OPTIONS[_selected_display]
+    st.session_state["selected_model"] = _selected_model
+
+    if _selected_model.startswith("grok-"):
+        st.caption("✅ Live web & X search enabled")
+    else:
+        st.caption("⚠️ Training data only — no live search")
+
+    _fs_code = st.text_input(
+        "🔑 Flagship Access Code",
+        type="password",
+        key="_flagship_code_input",
+        placeholder="Enter code to unlock Run Flagship",
+    )
+    st.session_state["flagship_code_input"] = _fs_code
+
+    # Real-time validation hint
+    if _fs_code and _fs_code != _FLAGSHIP_CODE:
+        st.error("❌ Invalid Flagship code")
+
+    _code_ok = _fs_code == _FLAGSHIP_CODE
+    _fs_clicked = st.button(
+        "🚀 Run Flagship",
+        disabled=job_running or not _code_ok,
+        use_container_width=True,
+        key="_flagship_btn",
+    )
+    if _fs_clicked:
+        if st.session_state["surveillance_running"]:
+            st.warning("⚠️ A job is already running.")
+        elif _fs_code != _FLAGSHIP_CODE:
+            st.error("❌ Invalid Flagship code")
+        else:
+            if _ACTIVE_THREAD is not None and _ACTIVE_THREAD.is_alive():
+                st.warning("A surveillance job is already running. Please wait.")
+                st.rerun()
             else:
-                if _ACTIVE_THREAD is not None and _ACTIVE_THREAD.is_alive():
-                    st.warning("A surveillance job is already running. Please wait.")
-                    st.rerun()
-                else:
-                    _job_token = datetime.now().isoformat()
-                    st.session_state["surveillance_running"] = True
-                    st.session_state["run_status"] = "running"
-                    st.session_state["job_start_time"] = datetime.fromisoformat(_job_token)
-                    st.session_state["active_job_token"] = _job_token
-                    st.session_state["active_model"] = MODEL_FLAGSHIP
-                    _ACTIVE_THREAD = threading.Thread(
-                        target=run_surveillance_thread,
-                        args=(False, _job_token, MODEL_FLAGSHIP),
-                        daemon=True,
-                    )
-                    _ACTIVE_THREAD.start()
-                    st.rerun()
+                _job_token = datetime.now().isoformat()
+                st.session_state["surveillance_running"] = True
+                st.session_state["run_status"] = "running"
+                st.session_state["job_start_time"] = datetime.fromisoformat(_job_token)
+                st.session_state["active_job_token"] = _job_token
+                st.session_state["active_model"] = _selected_model
+                _ACTIVE_THREAD = threading.Thread(
+                    target=run_surveillance_thread,
+                    args=(False, _job_token, _selected_model),
+                    daemon=True,
+                )
+                _ACTIVE_THREAD.start()
+                st.rerun()
 
     # ── In-progress indicator ──────────────────────────────────────────────
     # (sleep + rerun is handled by the full-page banner in the main content area)
@@ -520,8 +584,16 @@ with st.sidebar:
         except Exception:
             _age_str = ""
         _mv = _cached.get("model_version") or MODEL_FAST
-        _mv_label = "⚡ Grok 4.1 Fast" if _mv == MODEL_FAST else "🚀 Grok 4.20 Flagship"
-        _mv_color = "#6b7280" if _mv == MODEL_FAST else "#fbbf24"
+        _mv_tag = _model_tag(_mv)
+        _mv_label = f"🤖 {_mv_tag}"
+        _mv_color_map = {
+            "Grok": "#0F766E",
+            "Claude": "#7C3AED",
+            "GPT": "#2563EB",
+            "DeepSeek": "#EA580C",
+            "Legacy": "#6B7280",
+        }
+        _mv_color = _mv_color_map.get(_mv_tag, "#6b7280")
         _chip_pres = st.session_state.get("theme", "presentation") == "presentation"
         _chip_bg = "#FFFFFF" if _chip_pres else "#1f2937"
         _chip_border = "#E2E8F0" if _chip_pres else "#374151"
@@ -1838,12 +1910,17 @@ elif page == "🕑 History":
         st.stop()
 
     # ── Summary counts ──────────────────────────────────────────────────────
-    _fast_count = sum(1 for r in all_reports if (r.get("model_version") or MODEL_FAST) == MODEL_FAST)
-    _flag_count = len(all_reports) - _fast_count
-    _c1, _c2, _c3 = st.columns(3)
+    _model_counts: dict[str, int] = {}
+    for r in all_reports:
+        mv = r.get("model_version") or MODEL_FAST
+        tag = _model_tag(mv)
+        _model_counts[tag] = _model_counts.get(tag, 0) + 1
+    _c1, _c2 = st.columns(2)
     _c1.metric("📊 Total Reports", len(all_reports))
-    _c2.metric("⚡ Grok 4.1 Fast", _fast_count)
-    _c3.metric("🚀 Grok 4.20 Flagship", _flag_count)
+    with _c2:
+        st.markdown("**Models used**")
+        for tag, count in sorted(_model_counts.items()):
+            st.caption(f"• {tag}: {count}")
     st.caption("Click **Load** to view any historical report on the Dashboard for side-by-side comparison.")
     st.markdown("---")
 
@@ -1851,17 +1928,12 @@ elif page == "🕑 History":
         ts = rep.get("run_date", "")[:19].replace("T", " ")
         summary = rep.get("summary", "No summary") or "No summary"
         mv = rep.get("model_version") or MODEL_FAST
-        is_flagship = mv == MODEL_FLAGSHIP
-        if is_flagship:
-            _badge_html = '<span style="background:#78350f;color:#fbbf24;border-radius:4px;padding:2px 8px;font-size:0.72rem;font-weight:700;letter-spacing:0.02em;">🚀 Grok 4.20 Flagship</span>'
-            _border_color = "#92400e"
-        else:
-            _badge_html = '<span style="background:#1e3a5f;color:#93c5fd;border-radius:4px;padding:2px 8px;font-size:0.72rem;font-weight:700;letter-spacing:0.02em;">⚡ Grok 4.1 Fast</span>'
-            _border_color = "#1e40af"
+        _badge_html, _border_color = _model_badge(mv)
+        _tag = _model_tag(mv)
 
         col_exp, col_btn = st.columns([9, 1])
         with col_exp:
-            with st.expander(f"📄 Report #{rep['id']}  —  {ts}"):
+            with st.expander(f"📄 Report #{rep['id']}  —  {ts}  —  {_tag}"):
                 st.markdown(_badge_html, unsafe_allow_html=True)
                 st.caption(f"Model: `{mv}`")
                 st.write(summary[:600] + ("…" if len(summary) > 600 else ""))
