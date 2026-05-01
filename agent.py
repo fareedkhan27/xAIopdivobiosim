@@ -431,7 +431,7 @@ def run_surveillance(use_batch: bool = True, run_token: str | None = None, model
     else:
         log.info("Running SYNC call — model=%s", active_model)
         _set_status("connecting", f"Sending prompt to {active_model} via Sync API")
-        raw_text = _call_chat(prompt_text, model=active_model)
+        raw_text = _call_model(prompt_text, model=active_model)
 
     _set_status("parsing", "Parsing JSON response from Grok")
     data = parse_grok_response(raw_text)
