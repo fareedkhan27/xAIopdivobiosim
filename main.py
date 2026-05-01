@@ -470,9 +470,9 @@ with st.sidebar:
     _FLAGSHIP_CODE = os.getenv("FLAGSHIP_CODE", "flagship2026")
     _MODEL_OPTIONS = {
         "🚀 Grok 4.1 Fast (xAI — Live web + X)": "grok-4-1-fast-reasoning",
-        "🧠 Claude 3.7 Sonnet (OpenRouter)": "anthropic/claude-3.7-sonnet",
-        "📊 GPT-4.1 (OpenRouter)": "openai/gpt-4.1",
-        "💡 DeepSeek Chat (OpenRouter)": "deepseek/deepseek-chat",
+        "🧠 Claude Sonnet 4.5 (OpenRouter)": "anthropic/claude-sonnet-4.5",
+        "📊 GPT 5.5 (OpenRouter)": "openai/gpt-5.5",
+        "💡 DeepSeek V4 Pro (OpenRouter)": "deepseek/deepseek-v4-pro",
     }
     _MODEL_DISPLAY = list(_MODEL_OPTIONS.keys())
     _selected_display = st.selectbox(
