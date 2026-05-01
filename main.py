@@ -13,7 +13,10 @@ Tabs:
 Run with:  streamlit run main.py
 """
 
+import html
 import json
+import logging as _logging
+import os
 import threading
 from datetime import datetime
 
@@ -22,7 +25,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from db import get_all_reports, get_latest_report, get_report_by_id, get_report_count, init_db, MODEL_FAST, MODEL_FLAGSHIP
+from db import get_all_reports, get_latest_report, get_report_by_id, init_db, MODEL_FAST, MODEL_FLAGSHIP
 
 # ─── Page config ─────────────────────────────────────────────────────────────
 # MUST be the very first Streamlit call in the script.
@@ -46,7 +49,6 @@ st.markdown(
 # ─── Database initialisation ─────────────────────────────────────────────────
 # Called unconditionally on every startup — CREATE TABLE IF NOT EXISTS makes it
 # fully idempotent (safe to run on every rerun, no-ops if tables already exist).
-import logging as _logging
 _logging.basicConfig(level=_logging.INFO)
 _log = _logging.getLogger(__name__)
 try:
@@ -89,7 +91,7 @@ if "nav_page" not in st.session_state:
 
 # ─── Password gate ────────────────────────────────────────────────────────────
 # Checked immediately after session state is ready — before CSS, DB, or any UI.
-_CORRECT_PASSWORD = "1001"
+_CORRECT_PASSWORD = os.getenv("ACCESS_CODE", "1001")
 
 if not st.session_state["authenticated"]:
     # Inject minimal CSS so the login card renders correctly even though the
@@ -495,6 +497,11 @@ h3 { font-size: clamp(1rem, 3vw, 1.25rem) !important; }
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+def _esc(s: object) -> str:
+    """Escape HTML entities in user-provided strings to prevent XSS."""
+    return html.escape(str(s), quote=True) if s is not None else ""
+
+
 def load_report_data(report: dict | None) -> dict:
     """Parse raw_json from a DB row into a Python dict."""
     if not report:
@@ -661,44 +668,8 @@ with st.sidebar:
     # Single read of the flag — avoids repeated dict lookups and keeps logic clear
     job_running: bool = bool(st.session_state["surveillance_running"])
 
-    run_mode = st.selectbox(
-        "Mode",
-        ["Batch (50% cheaper)", "Sync (faster)"],
-        disabled=job_running,          # locked while job is in flight
-        key="run_mode_select",
-    )
-    use_batch = "Batch" in run_mode
-
-    # ── Run Now button ─────────────────────────────────────────────────────
-    btn_label = "⏳ Job Running…" if job_running else "▶ Run Now"
-    clicked = st.button(
-        btn_label,
-        disabled=job_running,          # visually disabled + unclickable
-        use_container_width=True,
-        type="primary" if not job_running else "secondary",
-    )
-
-    if clicked:
-        # Double-click / race-condition guard: re-check the flag atomically
-        if st.session_state["surveillance_running"]:
-            st.warning("⚠️ A job is already running — please wait for it to finish.")
-        else:
-            _job_token = datetime.now().isoformat()
-            st.session_state["surveillance_running"] = True
-            st.session_state["run_status"] = "running"
-            st.session_state["job_start_time"] = datetime.fromisoformat(_job_token)
-            st.session_state["active_job_token"] = _job_token
-            st.session_state["active_model"] = MODEL_FAST
-            t = threading.Thread(
-                target=run_surveillance_thread,
-                args=(use_batch, _job_token, MODEL_FAST),
-                daemon=True,
-            )
-            t.start()
-            st.rerun()   # immediately re-render so the button disables right away
-
     # ── Flagship Run (access-code protected) ───────────────────────────────
-    _FLAGSHIP_CODE = "flagship2026"
+    _FLAGSHIP_CODE = os.getenv("FLAGSHIP_CODE", "flagship2026")
     with st.expander("🚀 Run Flagship Model", expanded=False):
         st.caption("Higher accuracy · Significantly slower · Requires access code")
         _fs_code = st.text_input("Access code", type="password", key="_flagship_code_input", label_visibility="collapsed", placeholder="Enter access code")
@@ -722,7 +693,7 @@ with st.sidebar:
                 st.session_state["active_model"] = MODEL_FLAGSHIP
                 t = threading.Thread(
                     target=run_surveillance_thread,
-                    args=(use_batch, _job_token, MODEL_FLAGSHIP),
+                    args=(True, _job_token, MODEL_FLAGSHIP),
                     daemon=True,
                 )
                 t.start()
@@ -786,7 +757,7 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
     else:
-        st.caption("No report yet. Click ▶ Run Now.")
+        st.caption("No report yet. Click 🚀 Run Flagship.")
 
     st.markdown("---")
     # ── Test Email ─────────────────────────────────────────────────────────
@@ -839,13 +810,10 @@ if st.session_state["surveillance_running"]:
 
     import time as _time
 
-    _use_batch = "Batch" in st.session_state.get("run_mode_select", "Batch")
-    _eta = "15 – 90 minutes" if _use_batch else "5 – 20 minutes"
-    _mode_label = "Batch API (50% cheaper)" if _use_batch else "Synchronous API"
+    _eta = "15 – 90 minutes"
+    _mode_label = "Batch API (50% cheaper)"
     _close_note = (
         "You can safely close this tab — the job runs in the background and the dashboard will update automatically when ready."
-        if _use_batch
-        else "Keep this tab open until the job finishes."
     )
 
     # ── Safe job-completion check (only runs because surveillance_running is True) ──
@@ -966,7 +934,7 @@ if st.session_state["surveillance_running"]:
               padding:14px 18px;color:#9ca3af;font-size:0.86rem;line-height:1.8;">
     <span style="color:#6ee7b7;">💡</span> <b style="color:#d1fae5;">{_close_note}</b><br>
     <span style="color:#6ee7b7;">🔄</span> This page auto-refreshes every 30 seconds — new results appear automatically when ready.<br>
-    <span style="color:#6ee7b7;">🚫</span> The <b style="color:#d1fae5;">Run Now</b> button is locked until this job completes.
+    <span style="color:#6ee7b7;">🚫</span> The <b style="color:#d1fae5;">Run Flagship</b> button is locked until this job completes.
   </div>
 
 </div>
@@ -1069,8 +1037,8 @@ if page == "📊 Dashboard":
                 is_live = "launch" in phase.lower()
                 badge   = ' <span style="background:#065f46;color:#6ee7b7;padding:1px 7px;border-radius:99px;font-size:0.72rem;font-weight:600;">✅ Launched</span>' if is_live else ""
                 st.markdown(
-                    f"**{c.get('company','')}** — {c.get('biosimilar','')} "
-                    f"<span style='color:#9ca3af;font-size:0.82rem;'>({phase})</span>{badge}",
+                    f"**{_esc(c.get('company',''))}** — {_esc(c.get('biosimilar',''))} "
+                    f"<span style='color:#9ca3af;font-size:0.82rem;'>({_esc(phase)})</span>{badge}",
                     unsafe_allow_html=True,
                 )
             # Baseline companies not returned by Grok this run
@@ -1102,8 +1070,8 @@ if page == "📊 Dashboard":
             with st.expander("✅ View launched", expanded=False):
                 for c in launched_cos:
                     st.markdown(
-                        f"🟢 **{c.get('company','')}** · {c.get('biosimilar','')}  \n"
-                        f"<span style='color:#9ca3af;font-size:0.82rem;'>Markets: {c.get('countries','—')}</span>",
+                        f"🟢 **{_esc(c.get('company',''))}** · {_esc(c.get('biosimilar',''))}  \n"
+                        f"<span style='color:#9ca3af;font-size:0.82rem;'>Markets: {_esc(c.get('countries','—'))}</span>",
                         unsafe_allow_html=True,
                     )
         else:
@@ -1125,7 +1093,7 @@ if page == "📊 Dashboard":
             f'<div class="kpi-card" style="border-color:{threat_color};">'
             f'<div class="kpi-value" style="color:{threat_color};">{threat_count}</div>'
             f'<div class="kpi-label">Threats in My Markets</div>'
-            f'<div style="color:#9ca3af;font-size:0.70rem;margin-top:4px;">{_sub}</div>'
+            f'<div style="color:#9ca3af;font-size:0.70rem;margin-top:4px;">{_esc(_sub)}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -1162,7 +1130,7 @@ if page == "📊 Dashboard":
             top_name = top.get("company", "—").split()[0]   # first word to keep it short
             st.markdown(
                 f'<div class="kpi-card" style="border-color:#f59e0b;">'
-                f'<div class="kpi-value" style="color:#f59e0b;font-size:1.3rem;">{top_name}</div>'
+                f'<div class="kpi-value" style="color:#f59e0b;font-size:1.3rem;">{_esc(top_name)}</div>'
                 f'<div class="kpi-label">Highest Risk Competitor</div></div>',
                 unsafe_allow_html=True,
             )
@@ -1186,9 +1154,9 @@ if page == "📊 Dashboard":
     for item in verified[:4]:
         st.markdown(
             f'<div class="update-card">'
-            f'<div class="source">📌 {item.get("source","")} &nbsp;·&nbsp; {item.get("date","")}</div>'
-            f'<div class="title">{item.get("title","")}</div>'
-            f'<div class="body">{item.get("summary","")}</div>'
+            f'<div class="source">📌 {_esc(item.get("source",""))} &nbsp;·&nbsp; {_esc(item.get("date",""))}</div>'
+            f'<div class="title">{_esc(item.get("title",""))}</div>'
+            f'<div class="body">{_esc(item.get("summary",""))}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -1252,8 +1220,8 @@ elif page == "🔬 Pipeline Tracker":
     def _phase_cell(phase: str) -> str:
         if "launch" in phase.lower():
             return (
-                f'<span style="background:#065f46;color:#6ee7b7;padding:3px 10px;'
-                f'border-radius:99px;font-size:0.82rem;font-weight:700;">✅ Launched</span>'
+                '<span style="background:#065f46;color:#6ee7b7;padding:3px 10px;'
+                'border-radius:99px;font-size:0.82rem;font-weight:700;">✅ Launched</span>'
             )
         if "approved" in phase.lower():
             return (
@@ -1283,14 +1251,14 @@ elif page == "🔬 Pipeline Tracker":
         row_bg = "background:#052e16;" if is_launched else ""
         html_rows += (
             f'<tr style="{row_bg}">'
-            f'<td style="padding:10px 12px;font-weight:600;">{row.get("company","")}</td>'
-            f'<td style="padding:10px 12px;color:#a5b4fc;">{row.get("biosimilar","")}</td>'
-            f'<td style="padding:10px 12px;">{_phase_cell(str(row.get("phase","")))}</td>'
-            f'<td style="padding:10px 12px;color:#d1d5db;font-size:0.88rem;">{row.get("status","")}</td>'
-            f'<td style="padding:10px 12px;color:#9ca3af;">{row.get("countries","")}</td>'
-            f'<td style="padding:10px 12px;">{row.get("est_launch","")}</td>'
+            f'<td style="padding:10px 12px;font-weight:600;">{_esc(row.get("company",""))}</td>'
+            f'<td style="padding:10px 12px;color:#a5b4fc;">{_esc(row.get("biosimilar",""))}</td>'
+            f'<td style="padding:10px 12px;">{_phase_cell(_esc(str(row.get("phase",""))))}</td>'
+            f'<td style="padding:10px 12px;color:#d1d5db;font-size:0.88rem;">{_esc(row.get("status",""))}</td>'
+            f'<td style="padding:10px 12px;color:#9ca3af;">{_esc(row.get("countries",""))}</td>'
+            f'<td style="padding:10px 12px;">{_esc(row.get("est_launch",""))}</td>'
             f'<td style="padding:10px 12px;">{_prob_cell(int(row.get("probability", 0)))}</td>'
-            f'<td style="padding:10px 12px;color:#9ca3af;font-size:0.85rem;">{row.get("strengths_weaknesses","")}</td>'
+            f'<td style="padding:10px 12px;color:#9ca3af;font-size:0.85rem;">{_esc(row.get("strengths_weaknesses",""))}</td>'
             f'</tr>'
         )
 
@@ -1383,7 +1351,7 @@ elif page == "📣 Social Noise":
             _platform = (post.get("platform") or "News").strip()
             if _post_url and _url_verified:
                 _link_html = (
-                    f'<a class="post-link" href="{_post_url}" target="_blank" rel="noopener noreferrer">'
+                    f'<a class="post-link" href="{_esc(_post_url)}" target="_blank" rel="noopener noreferrer">'
                     f'🔗 View Original</a>'
                 )
             elif _post_url and not _url_verified:
@@ -1395,14 +1363,14 @@ elif page == "📣 Social Noise":
                 f'<div class="post-card">'
                 f'<div class="post-header">'
                 f'<div class="post-meta">'
-                f'<span class="platform-badge">🌐 {_platform}</span>'
-                f'<span class="user">{post.get("user","@unknown")}</span>'
-                f'<span class="time">{post.get("date","")}</span>'
-                f'{sentiment_badge(post.get("sentiment","Neutral"))}'
+                f'<span class="platform-badge">🌐 {_esc(_platform)}</span>'
+                f'<span class="user">{_esc(post.get("user","@unknown"))}</span>'
+                f'<span class="time">{_esc(post.get("date",""))}</span>'
+                f'{sentiment_badge(_esc(post.get("sentiment","Neutral")))}'
                 f'</div>'
                 f'{_link_html}'
                 f'</div>'
-                f'<div class="text">{post.get("post","")}</div>'
+                f'<div class="text">{_esc(post.get("post",""))}</div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
@@ -1693,7 +1661,7 @@ elif page == "🌍 LR Markets":
             return "⚡ Already on market"
         if not est_launch or est_launch.strip().upper() == "TBD":
             return "Timeline unknown"
-        today = _date(2026, 4, 1)
+        today = _date.today()
         el = est_launch.strip()
         qm = _re.match(r"Q([1-4])\s*/?\s*(\d{4})", el)
         if qm:
@@ -1910,11 +1878,11 @@ elif page == "🌍 LR Markets":
                                     f'<div style="border-top:1px solid #374151;'
                                     f'padding-top:8px;margin-top:6px;">'
                                     f'<div style="font-weight:600;color:#e2e8f0;'
-                                    f'font-size:0.85rem;">{t.get("company","")}</div>'
+                                    f'font-size:0.85rem;">{_esc(t.get("company",""))}</div>'
                                     f'<div style="color:#94a3b8;font-size:0.78rem;'
-                                    f'margin-bottom:4px;">{t.get("biosimilar","")} &nbsp;·&nbsp; {phase}</div>'
+                                    f'margin-bottom:4px;">{_esc(t.get("biosimilar",""))} &nbsp;·&nbsp; {_esc(phase)}</div>'
                                     f'<div style="color:{ttt_color};font-size:0.78rem;'
-                                    f'font-weight:600;margin-bottom:6px;">⏱ {ttt}</div>'
+                                    f'font-weight:600;margin-bottom:6px;">⏱ {_esc(ttt)}</div>'
                                     f'<div style="color:#cbd5e1;font-size:0.75rem;">'
                                     f'<strong>Ops Actions:</strong>'
                                     f'<ul style="margin:3px 0 0 14px;padding:0;">'
@@ -1949,12 +1917,12 @@ elif page == "🌍 LR Markets":
             acts = _actions(t.get("phase", ""), "High")
             acts_md = "\n".join(f"   - {a}" for a in acts)
             st.markdown(
-                f"**📍 {t.get('country','')}** ({t.get('region','')} · "
-                f"{t.get('operational_model','')})\n\n"
-                f"> **Competitor:** {t.get('company','')} &nbsp;·&nbsp; "
-                f"**Biosimilar:** {t.get('biosimilar','')} &nbsp;·&nbsp; "
-                f"**Phase:** {t.get('phase','')} &nbsp;·&nbsp; "
-                f"**Est. Launch:** {t.get('est_launch','TBD')}\n\n"
+                f"**📍 {_esc(t.get('country',''))}** ({_esc(t.get('region',''))} · "
+                f"{_esc(t.get('operational_model',''))})\n\n"
+                f"> **Competitor:** {_esc(t.get('company',''))} &nbsp;·&nbsp; "
+                f"**Biosimilar:** {_esc(t.get('biosimilar',''))} &nbsp;·&nbsp; "
+                f"**Phase:** {_esc(t.get('phase',''))} &nbsp;·&nbsp; "
+                f"**Est. Launch:** {_esc(t.get('est_launch','TBD'))}\n\n"
                 f"**Recommended Actions:**\n{acts_md}\n\n---",
             )
 

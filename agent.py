@@ -31,7 +31,6 @@ from xai_sdk.sync.client import Client
 from xai_sdk.chat import user as user_msg
 
 from db import get_latest_report, init_db, save_report, MODEL_FAST, MODEL_FLAGSHIP
-from notifications import send_report_ready_email, send_high_risk_alert
 from prompts import OPDIVO_SURVEILLANCE_PROMPT
 
 load_dotenv()
@@ -241,15 +240,15 @@ def _patch_companies(companies: list[dict]) -> list[dict]:
             idx = matches[0]
             existing_phase = companies[idx].get("phase", "")
             if "launch" not in existing_phase.lower():
-                print(
-                    f"[agent][patch] Correcting '{companies[idx]['company']}' "
-                    f"phase from '{existing_phase}' → 'Launched'"
+                log.info(
+                    "[patch] Correcting '%s' phase from '%s' → 'Launched'",
+                    companies[idx]["company"], existing_phase,
                 )
                 companies[idx]["phase"] = known["phase"]
                 companies[idx]["probability"] = known["probability"]
                 companies[idx]["status"] = known["status"]
         else:
-            print(f"[agent][patch] Injecting missing entry: {known['company']}")
+            log.info("[patch] Injecting missing entry: %s", known["company"])
             companies.append(dict(known))
     return companies
 
@@ -262,7 +261,23 @@ def parse_grok_response(raw_text: str) -> dict:
         lines = text.splitlines()
         text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
 
-    data = json.loads(text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        log.error("JSON parse failed: %s", exc)
+        # Return a minimal valid dict so the pipeline doesn't crash
+        return {
+            "parse_error": True,
+            "executive_summary": (
+                f"[PARSE ERROR] Grok returned invalid JSON. Raw text length: {len(text)}. "
+                f"Error: {exc}"
+            ),
+            "companies": [],
+            "verified_updates": [],
+            "social_noise": [],
+            "my_markets_threat": [],
+            "ai_insights": "",
+        }
 
     # ── Guarantee known ground-truth entries are correct ──────────────────────
     if "companies" in data:
@@ -353,32 +368,6 @@ def run_surveillance(use_batch: bool = True, run_token: str | None = None, model
         result_ready=True,
         expected_report_run_date=expected_run_date,
     )
-
-    try:
-        _threats = data.get("my_markets_threat", []) or []
-        _high_risk = [
-            t for t in _threats
-            if str(t.get("risk_level", "")).strip().lower() == "high"
-        ]
-        _high_risk_count = len(_high_risk)
-
-        if _high_risk_count > 0:
-            _set_status("emailing", f"Sending High-Risk alert email ({_high_risk_count} threats)")
-            log.info(
-                "HIGH-RISK threats detected (%d) — sending high-risk alert email.",
-                _high_risk_count,
-            )
-            send_high_risk_alert(data)
-            log.info("send_high_risk_alert() succeeded.")
-        else:
-            log.info(
-                "No High-risk threats detected — skipping email alert "
-                "(total threats tracked: %d).",
-                len(_threats),
-            )
-            _set_status("emailing", "No High-risk threats — email alert skipped")
-    except Exception as exc:
-        log.warning("Email alert failed (non-fatal): %s", exc)
 
     t_end = datetime.now()
     duration = (t_end - t_start).total_seconds()
