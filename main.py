@@ -618,8 +618,16 @@ def reconcile_job_state_from_agent() -> bool:
     return _changed
 
 
-if reconcile_job_state_from_agent():
-    st.rerun()
+# NOTE: reconcile_job_state_from_agent() is intentionally NOT called here at
+# the top level.  When JOB_STATUS["phase"] is "done" and a report exists in DB
+# the function returns _changed=True on every rerun, triggering an infinite
+# st.rerun() loop that prevents the dashboard from loading.
+# Job-completion detection is handled instead inside the progress banner block
+# (search for "Fast-path: job is truly done") which only runs while a job is
+# actively in flight (surveillance_running == True).
+#
+# if reconcile_job_state_from_agent():
+#     st.rerun()
 
 
 # (Session state and password gate have already run at the top of the file.)
