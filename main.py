@@ -89,7 +89,7 @@ if "nav_page" not in st.session_state:
 
 # ─── Password gate ────────────────────────────────────────────────────────────
 # Checked immediately after session state is ready — before CSS, DB, or any UI.
-_CORRECT_PASSWORD = "lrbiosim"
+_CORRECT_PASSWORD = "1001"
 
 if not st.session_state["authenticated"]:
     # Inject minimal CSS so the login card renders correctly even though the
