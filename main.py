@@ -1204,10 +1204,16 @@ elif page == "🔬 Pipeline Tracker":
     st.title("🔬 Pipeline Tracker")
 
     if not companies:
-        st.warning("No pipeline data. Run a surveillance sweep first.")
+        st.info("No pipeline data available yet. Run a new surveillance sweep to populate the tracker.")
         st.stop()
 
     df = pd.DataFrame(companies)
+
+    # Ensure expected columns exist (new prompt schema may omit them)
+    for _col in ("company", "biosimilar", "phase", "status", "countries",
+                 "est_launch", "probability", "strengths_weaknesses", "source"):
+        if _col not in df.columns:
+            df[_col] = "" if _col != "probability" else 0
 
     # ── Quick-filter: Launched only toggle ───────────────────────────────────
     launched_only = st.toggle("✅ Show Launched only", value=False)
@@ -1215,8 +1221,8 @@ elif page == "🔬 Pipeline Tracker":
     # ── Filters row ──────────────────────────────────────────────────────────
     # Filter row — collapses gracefully on narrow screens
     fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 3], gap="small")
-    company_filter = fc1.multiselect("Company",  sorted(df["company"].unique()))
-    phase_filter   = fc2.multiselect("Phase",    sorted(df["phase"].unique()))
+    company_filter = fc1.multiselect("Company",  sorted(df["company"].dropna().unique()))
+    phase_filter   = fc2.multiselect("Phase",    sorted(df["phase"].dropna().unique()))
     country_filter = fc3.text_input("Country contains")
     search_filter  = fc4.text_input("🔍 Search")
 
@@ -1567,7 +1573,7 @@ elif page == "📅 Timeline":
     st.title("📅 Competitive Timeline")
 
     if not companies:
-        st.warning("No pipeline data. Run a surveillance sweep first.")
+        st.info("No pipeline data available yet. Run a new surveillance sweep to populate the timeline.")
         st.stop()
 
     PHASE_ORDER = [
@@ -1599,11 +1605,11 @@ elif page == "📅 Timeline":
         start_dt = pd.Timestamp(today.year, today.month, 1) + pd.DateOffset(months=start_off)
         end_dt   = start_dt + pd.DateOffset(months=dur)
         gantt_rows.append({
-            "Company":   c["company"],
+            "Company":    c.get("company", "Unknown"),
             "Biosimilar": c.get("biosimilar", ""),
-            "Phase":     phase,
-            "Start":     start_dt,
-            "Finish":    end_dt,
+            "Phase":      phase,
+            "Start":      start_dt,
+            "Finish":     end_dt,
             "Probability": c.get("probability", 0),
         })
 
