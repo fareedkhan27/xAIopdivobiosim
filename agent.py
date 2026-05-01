@@ -24,6 +24,7 @@ import logging
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -102,8 +103,12 @@ def mark_job_error(detail: str) -> None:
 # Low-level helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _call_chat(prompt: str, model: str | None = None) -> str:
-    """Synchronous (non-batch) chat call — used for quick manual runs / fallback."""
+def _call_chat_raw(prompt: str, model: str | None = None) -> str:
+    """Synchronous (non-batch) chat call — used for quick manual runs / fallback.
+
+    This is the unwrapped inner function.  Use _call_chat() for the
+    timeout-protected public interface.
+    """
     _model = model or MODEL
     _set_status("connecting", f"Opening sync chat with {_model}")
     chat = client.chat.create(model=_model, temperature=0)
@@ -115,6 +120,24 @@ def _call_chat(prompt: str, model: str | None = None) -> str:
     log.info("Sync call completed in %.1fs (%.1f min)", elapsed, elapsed / 60)
     _set_status("received", f"Response received in {elapsed:.0f}s — parsing JSON")
     return response.content or ""
+
+
+def _call_chat(prompt: str, model: str | None = None, timeout_seconds: int = 1800) -> str:
+    """Timeout-protected wrapper around _call_chat_raw (default: 30 min).
+
+    If the Grok API hangs, this raises a clean TimeoutError instead of
+    blocking the worker thread forever.
+    """
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_call_chat_raw, prompt, model)
+        try:
+            return future.result(timeout=timeout_seconds)
+        except TimeoutError as exc:
+            log.error("Sync call timed out after %ds", timeout_seconds)
+            _set_status("error", f"Sync API call timed out after {timeout_seconds}s")
+            raise TimeoutError(
+                f"Grok API call exceeded {timeout_seconds}s timeout"
+            ) from exc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
