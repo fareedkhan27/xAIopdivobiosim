@@ -320,3 +320,64 @@ def build_surveillance_prompt(
 # Backward-compatible constant — agent.py historically did
 # `from prompts import OPDIVO_SURVEILLANCE_PROMPT`. Keep that working.
 OPDIVO_SURVEILLANCE_PROMPT: str = build_surveillance_prompt(date.today())
+
+
+# ─── Pipeline Dashboard Prompt ───────────────────────────────────────────────
+
+_PIPELINE_PROMPT_TEMPLATE = """\
+You are a Biosimilar Pipeline Analyst for Bristol-Myers Squibb.
+
+Your task: Return a clean, structured JSON listing of all nivolumab (Opdivo)
+biosimilar competitors and their current development status.
+
+Today's date: {run_date}
+
+# COMPANIES TO CHECK
+{companies_block}
+
+# REQUIRED OUTPUT FORMAT
+Return a single valid JSON object with this exact structure:
+
+{{
+  "generated_date": "{run_date}",
+  "competitors": [
+    {{
+      "company": "Exact company name",
+      "biosimilar_name": "Brand/INN code or null",
+      "molecule": "nivolumab",
+      "phase": "Pre-clinical | Phase I | Phase II | Phase III | BLA Submitted | Approved | Launched | Rejected | Discontinued | Unknown",
+      "status_summary": "One factual sentence on current status",
+      "development_countries": ["Country 1", "Country 2"],
+      "target_launch_countries": ["Country A", "Country B"],
+      "est_launch_date": "YYYY or Q[1-4] YYYY or N/A",
+      "probability_of_launch_2026": 0,
+      "regulatory_filings": ["FDA", "EMA", "CDSCO", "None"],
+      "source_url": "https://... or null",
+      "last_updated": "YYYY-MM-DD"
+    }}
+  ],
+  "market_readiness_summary": "<=100 words. Which 3 competitors are closest to entering BMS LR markets and why."
+}}
+
+# RULES
+R1. Include EVERY company in the COMPANIES list above. If no biosimilar
+    programme is found, set phase="Unknown", biosimilar_name=null.
+R2. development_countries: countries where clinical trials or manufacturing
+    are actively happening.
+R3. target_launch_countries: countries explicitly named in filings, press
+    releases, or investor presentations as target markets.
+R4. probability_of_launch_2026: integer 0-100. 0=no programme. 100=already
+    launched. Use 2026 as the reference year.
+R5. regulatory_filings: list of bodies where filings have been submitted.
+R6. Every URL must come from a tool result. If unsure, set source_url=null.
+R7. No markdown fences. No comments. No trailing commas.
+R8. If you cannot return valid JSON, return: {{"parse_error": true, "competitors": []}}
+"""
+
+
+def build_pipeline_prompt(run_date: date) -> str:
+    """Return the pipeline dashboard prompt."""
+    return _PIPELINE_PROMPT_TEMPLATE.format(
+        run_date=run_date.isoformat(),
+        companies_block=_format_companies(),
+    )

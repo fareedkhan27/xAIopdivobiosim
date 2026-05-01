@@ -443,6 +443,7 @@ with st.sidebar:
     _NAV_OPTIONS = [
         "📊 Dashboard",
         "🔬 Pipeline Tracker",
+        "🎯 Pipeline Tracker",
         "✅ Verified Intelligence",
         "📣 Social Noise",
         "🤖 AI Insights",
@@ -1259,7 +1260,89 @@ elif page == "🔬 Pipeline Tracker":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3. VERIFIED INTELLIGENCE
+# 3. PIPELINE DASHBOARD (Dedicated competitor tracker)
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "🎯 Pipeline Tracker":
+    st.title("🎯 Competitor Pipeline Tracker")
+    st.caption("Real-time biosimilar development status across all monitored competitors")
+
+    # Refresh button
+    _refresh_pipeline = st.button("🔄 Refresh Pipeline Data", use_container_width=True)
+
+    # Try to load from cache, or run fresh
+    _pipeline_data = None
+
+    if _refresh_pipeline:
+        with st.spinner("Fetching competitor pipeline data..."):
+            import agent as _agent
+            _pipeline_data = _agent.run_pipeline_dashboard(
+                model=st.session_state.get("selected_model", "grok-4-1-fast-reasoning")
+            )
+            if _pipeline_data and not _pipeline_data.get("parse_error"):
+                st.success("Pipeline data refreshed")
+                st.session_state["_pipeline_cache"] = _pipeline_data
+            else:
+                st.error("Failed to fetch pipeline data")
+    else:
+        _pipeline_data = st.session_state.get("_pipeline_cache")
+
+    # Display
+    if _pipeline_data and not _pipeline_data.get("parse_error"):
+        _competitors = _pipeline_data.get("competitors", [])
+
+        # Summary cards
+        _cols = st.columns(4)
+        _phases = {"Pre-clinical": 0, "Phase I": 0, "Phase II": 0, "Phase III": 0,
+                   "BLA Submitted": 0, "Approved": 0, "Launched": 0, "Unknown": 0}
+        for c in _competitors:
+            _phases[c.get("phase", "Unknown")] = _phases.get(c.get("phase", "Unknown"), 0) + 1
+
+        with _cols[0]:
+            st.metric("Total Tracked", len(_competitors))
+        with _cols[1]:
+            st.metric("Launched / Approved", _phases.get("Launched", 0) + _phases.get("Approved", 0))
+        with _cols[2]:
+            st.metric("Phase III / BLA", _phases.get("Phase III", 0) + _phases.get("BLA Submitted", 0))
+        with _cols[3]:
+            st.metric("Early Stage", _phases.get("Pre-clinical", 0) + _phases.get("Phase I", 0) + _phases.get("Phase II", 0))
+
+        # Phase distribution bar
+        _phase_df = {"Phase": list(_phases.keys()), "Count": list(_phases.values())}
+        st.bar_chart(_phase_df, x="Phase", y="Count", color="#0F766E")
+
+        # Competitor table
+        st.subheader("Competitor Details")
+        for _comp in _competitors:
+            with st.expander(f"{_comp.get('company', 'Unknown')} — {_comp.get('phase', 'Unknown')}"):
+                _c1, _c2 = st.columns([1, 2])
+                with _c1:
+                    st.markdown(f"**Biosimilar:** {_comp.get('biosimilar_name', 'N/A')}")
+                    st.markdown(f"**Phase:** {_comp.get('phase', 'Unknown')}")
+                    st.markdown(f"**Est. Launch:** {_comp.get('est_launch_date', 'N/A')}")
+                    st.markdown(f"**Launch Probability (2026):** {_comp.get('probability_of_launch_2026', 0)}%")
+                with _c2:
+                    st.markdown(f"**Status:** {_comp.get('status_summary', 'No data')}")
+                    _dev = _comp.get('development_countries', [])
+                    _target = _comp.get('target_launch_countries', [])
+                    if _dev:
+                        st.markdown(f"**Development:** {', '.join(_dev)}")
+                    if _target:
+                        st.markdown(f"**Target Markets:** {', '.join(_target)}")
+                    _filings = _comp.get('regulatory_filings', [])
+                    if _filings and _filings != ["None"]:
+                        st.markdown(f"**Regulatory Filings:** {', '.join(_filings)}")
+                    if _comp.get('source_url'):
+                        st.markdown(f"[Source ↗]({_comp['source_url']})")
+
+        # Market readiness summary
+        if _pipeline_data.get('market_readiness_summary'):
+            st.info(f"**Market Readiness Summary:** {_pipeline_data['market_readiness_summary']}")
+    else:
+        st.info("Click '🔄 Refresh Pipeline Data' to load competitor pipeline information.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 4. VERIFIED INTELLIGENCE
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "✅ Verified Intelligence":
     st.title("✅ Verified Intelligence")
@@ -1282,7 +1365,7 @@ elif page == "✅ Verified Intelligence":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 4. SOCIAL NOISE
+# 5. SOCIAL NOISE
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📣 Social Noise":
     st.title("📣 Social Noise")
@@ -1364,7 +1447,7 @@ elif page == "📣 Social Noise":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 5. AI INSIGHTS
+# 6. AI INSIGHTS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🤖 AI Insights":
     st.title("🤖 AI Insights")
@@ -1486,7 +1569,7 @@ elif page == "🤖 AI Insights":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 6. TIMELINE (Gantt-style)
+# 7. TIMELINE (Gantt-style)
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📅 Timeline":
     st.title("📅 Competitive Timeline")
@@ -1556,7 +1639,7 @@ elif page == "📅 Timeline":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 7. MY MARKETS
+# 8. MY MARKETS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🌍 LR Markets":
     import re as _re
@@ -1890,7 +1973,7 @@ elif page == "🌍 LR Markets":
             "Re-run surveillance to refresh intelligence."
         )
 
-# 8. HISTORY
+# 9. HISTORY
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🕑 History":
     st.title("🕑 Report History")

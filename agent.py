@@ -33,7 +33,7 @@ from xai_sdk.sync.client import Client
 from xai_sdk.chat import user as user_msg
 
 from db import get_latest_report, init_db, save_report, MODEL_FAST, MODEL_FLAGSHIP
-from prompts import build_surveillance_prompt
+from prompts import build_pipeline_prompt, build_surveillance_prompt
 
 load_dotenv()
 
@@ -462,6 +462,23 @@ def run_surveillance(use_batch: bool = True, run_token: str | None = None, model
     # very next reconcile pass without waiting for an extra reconcile cycle.
     mark_job_complete(f"Complete ✓ — Pipeline done in {duration:.0f}s")
     return data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pipeline Dashboard
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_pipeline_dashboard(model: str = "grok-4-1-fast-reasoning") -> dict:
+    """Fetch competitor pipeline data for the dedicated dashboard."""
+    prompt_text = build_pipeline_prompt(_date.today())
+
+    try:
+        raw_text = _call_model(prompt_text, model=model)
+        data = parse_grok_response(raw_text)
+        return data
+    except Exception as exc:
+        log.error("Pipeline dashboard failed: %s", exc)
+        return {"parse_error": True, "competitors": [], "error": str(exc)}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
