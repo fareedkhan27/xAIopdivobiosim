@@ -707,7 +707,7 @@ with st.sidebar:
                     st.session_state["active_model"] = MODEL_FLAGSHIP
                     _ACTIVE_THREAD = threading.Thread(
                         target=run_surveillance_thread,
-                        args=(True, _job_token, MODEL_FLAGSHIP),
+                        args=(False, _job_token, MODEL_FLAGSHIP),
                         daemon=True,
                     )
                     _ACTIVE_THREAD.start()
@@ -825,8 +825,7 @@ if st.session_state["surveillance_running"]:
 
     import time as _time
 
-    _eta = "15 – 90 minutes"
-    _mode_label = "Batch API (50% cheaper)"
+    _eta = "~5 – 20 minutes"
     _close_note = (
         "You can safely close this tab — the job runs in the background and the dashboard will update automatically when ready."
     )
@@ -858,10 +857,10 @@ if st.session_state["surveillance_running"]:
         "idle":        "Waiting to start",
         "starting":    "Initialising…",
         "connecting":  "Connecting to AI…",
-        "submitting":  "Submitting batch job…",
+        "submitting":  "Submitting surveillance job…",
         "queued":      "Job queued — awaiting processing",
         "waiting":     "Waiting for AI response…",
-        "polling":     "Polling batch — awaiting completion…",
+        "polling":     "Processing — awaiting response…",
         "retrieving":  "Downloading results…",
         "received":    "Response received — parsing…",
         "parsing":     "Parsing JSON response…",
@@ -927,8 +926,7 @@ if st.session_state["surveillance_running"]:
         Surveillance Job Running
       </div>
       <div style="color:#86efac;font-size:0.92rem;margin-top:6px;">
-        Mode: <b style="color:#a7f3d0;">{_mode_label}</b>
-        &nbsp;·&nbsp; This Batch job uses AI and typically takes <b style="color:#a7f3d0;">{_eta}</b>.
+        Powered by AI surveillance engine · typically takes <b style="color:#a7f3d0;">{_eta}</b>.
       </div>
     </div>
   </div>

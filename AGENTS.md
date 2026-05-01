@@ -15,7 +15,7 @@ Key features:
 - Clear separation between **Verified Intelligence** and **Social Noise**
 - Pipeline tracker with launch-probability scores
 - LR Markets threat monitor with per-country risk cards and recommended actions
-- Automatic weekly Batch-mode surveillance (~$0.05/run, 50% cheaper than sync)
+- Automatic weekly surveillance
 - Email alerts via Resend API (primary) or Gmail SMTP (fallback)
 - Dark-mode, mobile-first Streamlit dashboard
 
@@ -44,7 +44,7 @@ opdivo-surveillance/
 ├── .env.example             # Template for required env vars
 ├── requirements.txt         # Python dependencies
 ├── main.py                  # Streamlit dashboard (~2000 lines, all UI + routing)
-├── agent.py                 # Grok API client, batch orchestration, JSON parser
+├── agent.py                 # Grok API client, JSON parser
 ├── db.py                    # SQLite persistence layer (append-only, WAL mode)
 ├── prompts.py               # Single structured JSON prompt for Grok
 ├── notifications.py         # Email alerts (Resend primary, SMTP fallback)
@@ -63,13 +63,13 @@ opdivo-surveillance/
 - **`main.py`** — Streamlit entry point. Handles:
   - Password gate (`_CORRECT_PASSWORD = "1001"`)
   - Session-state bootstrap and job-progress reconciliation
-  - Sidebar navigation and "Run Now" / "Run Flagship" buttons
+  - Sidebar navigation and "Run Flagship" button
   - All dashboard pages: Dashboard, Pipeline Tracker, Verified Intelligence, Social Noise, AI Insights, Timeline, LR Markets, History
   - Extensive dark-mode CSS (mobile-first, responsive breakpoints)
 
 - **`agent.py`** — Core AI orchestration:
-  - `submit_batch_job()` / `poll_batch_job()` — Batch API (50% cost savings)
-  - `_call_chat()` — Synchronous fallback
+  - `submit_batch_job()` / `poll_batch_job()` — Batch API (used by scheduler)
+  - `_call_chat()` — Direct sync call (used by Run Flagship)
   - `parse_grok_response()` — Strips markdown fences, parses JSON, normalises schema, patches known ground-truth entries (e.g. Zydus Tishtha launched in India)
   - `run_surveillance()` — Full pipeline: submit/poll → parse → save → email
   - Thread-safe `JOB_STATUS` dict shared with the Streamlit UI
@@ -137,8 +137,8 @@ python test_api.py
 
 ### 7. Run a one-off surveillance job from CLI
 ```bash
-python agent.py           # Batch mode (default)
-python agent.py --sync    # Synchronous mode (faster, more expensive)
+python agent.py           # Default (batch)
+python agent.py --sync    # Direct sync call
 ```
 
 ---
@@ -187,7 +187,7 @@ There is **no automated test suite** (no `pytest`, no `unittest`). All testing i
    from notifications import send_test_email
    send_test_email()
    ```
-4. **Surveillance test**: Click **"▶ Run Now"** in the Streamlit sidebar (Batch mode, ~15–90 min) or run `python agent.py --sync` (~5–20 min).
+4. **Surveillance test**: Click **"🚀 Run Flagship"** in the Streamlit sidebar (~5–20 min) or run `python agent.py` (~15–90 min batch).
 5. **Scheduler test**: Temporarily change the CronTrigger in `scheduler.py` to a near-future time, start `python scheduler.py`, and verify execution.
 
 After any code change, restart the Streamlit server (`Ctrl+C` then `streamlit run main.py`) because Streamlit caches imports aggressively.
@@ -245,10 +245,10 @@ If you modify `db.py`, re-read the top-of-file docstring before making any schem
   1. Immediately after a job completes (`reconcile_job_state_from_agent()`)
   2. On the very first load of a new session
 
-### Batch vs Sync
-- **Batch mode** (default): Cheaper, slower (15–90 min). Uses `client.batch.create()` → `add()` → poll.
-- **Sync mode**: More expensive, faster (5–20 min). Uses `client.chat.create()` → `chat.sample()`.
-- The scheduler always uses Batch. The dashboard sidebar lets the user choose.
+### API paths
+- **Batch** (scheduler default): Cheaper, slower (15–90 min). Uses `client.batch.create()` → `add()` → poll.
+- **Sync** (Run Flagship): Direct call, faster (5–20 min). Uses `client.chat.create()` → `chat.sample()`.
+- The scheduler always uses batch for cost efficiency. The dashboard sidebar offers Run Flagship (sync).
 
 ### Grok response parsing
 - `parse_grok_response()` strips markdown fences, runs `json.loads()`, normalises fields for backwards compatibility, and patches known ground-truth entries (e.g. ensuring Zydus is marked "Launched" even if the model omits it).

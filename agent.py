@@ -345,20 +345,19 @@ def parse_grok_response(raw_text: str) -> dict:
 def run_surveillance(use_batch: bool = True, run_token: str | None = None, model: str | None = None) -> dict:
     """
     Full pipeline:
-      1. Submit Batch job (or sync call)
+      1. Submit API job (batch or sync)
       2. Parse JSON
       3. Save to DB (with model_version tag)
       4. Send email alert
     Returns the parsed data dict.
     """
     active_model = model or MODEL_FAST_DEFAULT
-    mode_label = "BATCH" if use_batch else "SYNC"
     t_start = datetime.now()
     run_token = run_token or t_start.isoformat()
-    log.info("=== Surveillance START [mode=%s model=%s] at %s ===", mode_label, active_model, t_start.isoformat())
+    log.info("=== Surveillance START [model=%s] at %s ===", active_model, t_start.isoformat())
     _set_status(
         "starting",
-        f"Initialising {mode_label} surveillance run",
+        "Initialising surveillance run",
         run_token=run_token,
         result_ready=False,
         expected_report_run_date="",
@@ -396,8 +395,8 @@ def run_surveillance(use_batch: bool = True, run_token: str | None = None, model
     t_end = datetime.now()
     duration = (t_end - t_start).total_seconds()
     log.info(
-        "=== Surveillance COMPLETE [mode=%s] duration=%.1fs (%.1f min) at %s ===",
-        mode_label, duration, duration / 60, t_end.isoformat(),
+        "=== Surveillance COMPLETE [duration=%.1fs (%.1f min) at %s] ===",
+        duration, duration / 60, t_end.isoformat(),
     )
     # Mark done immediately so the main thread can detect completion on the
     # very next reconcile pass without waiting for an extra reconcile cycle.
@@ -416,7 +415,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sync",
         action="store_true",
-        help="Use synchronous call instead of Batch API (faster, more expensive).",
+        help="Use direct sync call instead of batch (for manual runs).",
     )
     args = parser.parse_args()
 
