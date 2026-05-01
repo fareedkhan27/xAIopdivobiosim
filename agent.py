@@ -190,12 +190,13 @@ def poll_batch_job(batch_id: str) -> str:
             f"success={state.num_success} error={state.num_error} "
             f"total={state.num_requests}"
         )
-        _set_status("polling", status_detail)
-        log.info(
-            "Batch %s — pending=%s success=%s error=%s cancelled=%s total=%s",
-            batch_id, state.num_pending, state.num_success,
-            state.num_error, state.num_cancelled, state.num_requests,
-        )
+        if poll_count % 10 == 0:  # Log only every 10th poll (every 5 minutes)
+            _set_status("polling", status_detail)
+            log.info(
+                "Batch %s — pending=%s success=%s error=%s cancelled=%s total=%s",
+                batch_id, state.num_pending, state.num_success,
+                state.num_error, state.num_cancelled, state.num_requests,
+            )
 
         if state.num_requests > 0 and state.num_pending == 0:
             # All requests have been processed

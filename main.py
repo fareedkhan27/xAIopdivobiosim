@@ -820,6 +820,7 @@ if st.session_state["surveillance_running"]:
             if _elapsed_min else f"{_elapsed_s}s"
         )
     else:
+        _elapsed_s = 0
         _elapsed_str = "just started"
 
     import time as _time
@@ -876,7 +877,7 @@ if st.session_state["surveillance_running"]:
     else:
         _status_line = _phase_display
 
-    # ── Cycling informative messages (rotate every 10 seconds) ──────────────
+    # ── Cycling informative messages (rotate every 30 seconds) ──────────────
     _CYCLE_MSGS = [
         ("🔬", "Analyzing global biosimilar pipeline data…"),
         ("📋", "Scanning regulatory filings across LR markets…"),
@@ -889,11 +890,25 @@ if st.session_state["surveillance_running"]:
         ("⚖️",  "Reviewing patent expiry and litigation signals…"),
         ("📈", "Benchmarking competitive pricing intelligence…"),
     ]
-    _cycle_idx   = int(_time.time() // 10) % len(_CYCLE_MSGS)
+    _cycle_idx   = (_elapsed_s // 30) % len(_CYCLE_MSGS)
     _cycle_icon, _cycle_msg = _CYCLE_MSGS[_cycle_idx]
 
+    # Time-based progress (assumes 90min typical, caps at 95% to avoid false completion)
+    _progress = min(_elapsed_s / 5400, 0.95)  # 5400s = 90min
+    st.progress(_progress, text=f"⏳ Surveillance in progress — {_elapsed_str} elapsed")
+
+    _PULSE_CSS = """
+<style>
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(22, 163, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+</style>
+"""
     st.markdown(
-        f"""
+        _PULSE_CSS
+        + f"""
 <div style="
   background: linear-gradient(160deg,#0d1f1a 0%,#0f2d22 60%,#0d1f1a 100%);
   border: 2px solid #16a34a;
@@ -901,6 +916,7 @@ if st.session_state["surveillance_running"]:
   padding: 44px 48px 36px;
   margin-bottom: 32px;
   box-shadow: 0 8px 48px rgba(22,163,74,0.18), 0 2px 8px rgba(0,0,0,0.5);
+  animation: pulse-border 2s infinite;
 ">
 
   <!-- Header -->
@@ -939,7 +955,7 @@ if st.session_state["surveillance_running"]:
     <div style="font-size:1.7rem;flex-shrink:0;">{_cycle_icon}</div>
     <div>
       <div style="color:#bbf7d0;font-size:1.0rem;font-weight:600;">{_cycle_msg}</div>
-      <div style="color:#6ee7b7;font-size:0.78rem;margin-top:3px;">Processing step {_cycle_idx + 1} of {len(_CYCLE_MSGS)} · updates every 10 seconds</div>
+      <div style="color:#6ee7b7;font-size:0.78rem;margin-top:3px;">Processing step {_cycle_idx + 1} of {len(_CYCLE_MSGS)} · updates every 30 seconds</div>
     </div>
   </div>
 
@@ -947,7 +963,7 @@ if st.session_state["surveillance_running"]:
   <div style="background:rgba(17,24,39,0.6);border:1px solid #374151;border-radius:10px;
               padding:14px 18px;color:#9ca3af;font-size:0.86rem;line-height:1.8;">
     <span style="color:#6ee7b7;">💡</span> <b style="color:#d1fae5;">{_close_note}</b><br>
-    <span style="color:#6ee7b7;">🔄</span> This page auto-refreshes every 30 seconds — new results appear automatically when ready.<br>
+    <span style="color:#6ee7b7;">🔄</span> This page auto-refreshes every 15 seconds — new results appear automatically when ready.<br>
     <span style="color:#6ee7b7;">🚫</span> The <b style="color:#d1fae5;">Run Flagship</b> button is locked until this job completes.
   </div>
 
