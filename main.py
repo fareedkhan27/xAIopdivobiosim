@@ -26,6 +26,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from db import get_all_reports, get_latest_report, get_report_by_id, init_db, MODEL_FAST, MODEL_FLAGSHIP
+from theme import _PRESENTATION_CSS, _DARK_CSS
 
 # ─── Global thread tracker (prevents multiple concurrent surveillance jobs) ───
 _ACTIVE_THREAD: threading.Thread | None = None
@@ -91,6 +92,8 @@ if "last_report" not in st.session_state:
     st.session_state["last_report"] = get_latest_report()
 if "nav_page" not in st.session_state:
     st.session_state["nav_page"] = "📊 Dashboard"
+if "theme" not in st.session_state:
+    st.session_state["theme"] = "presentation"
 
 # ─── Password gate ────────────────────────────────────────────────────────────
 # Checked immediately after session state is ready — before CSS, DB, or any UI.
@@ -99,62 +102,115 @@ _CORRECT_PASSWORD = os.getenv("ACCESS_CODE", "1001")
 if not st.session_state["authenticated"]:
     # Inject minimal CSS so the login card renders correctly even though the
     # full stylesheet hasn't loaded yet.
-    st.markdown("""
-    <style>
-    html, body {
-        background-color: #111827 !important;
-        color: #e5e7eb !important;
-        font-family: 'Inter', 'Segoe UI', sans-serif;
-    }
-    [data-testid="stApp"],
-    [data-testid="stAppViewContainer"],
-    .stApp, .appview-container, .main, .block-container {
-        background-color: #111827 !important;
-        color: #e5e7eb !important;
-    }
-    [data-testid="stMarkdownContainer"] p,
-    [data-testid="stMarkdownContainer"] span { color: #e5e7eb !important; }
-    /* Mobile: remove Streamlit's default side padding so login card fills screen */
-    .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
-    .stButton > button {
-        background: #00D4C8 !important;
-        color: #111827 !important;
-        font-weight: 600 !important;
-        border-radius: 8px !important;
-        border: none !important;
-        width: 100% !important;
-        min-height: 48px !important;
-    }
-    /* Make text inputs tappable on iOS */
-    input[type="password"], input[type="text"] {
-        font-size: 16px !important;
-        min-height: 44px !important;
-        background-color: #1f2937 !important;
-        color: #e5e7eb !important;
-        border-color: #374151 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div style="display:flex;flex-direction:column;align-items:center;
-                justify-content:center;padding:2rem 0;">
-      <div style="background:#1f2937;border:1px solid #374151;border-radius:16px;
-                  padding:clamp(24px,5vw,48px) clamp(20px,6vw,56px);
-                  max-width:420px;width:100%;text-align:center;
-                  box-shadow:0 8px 32px rgba(0,0,0,0.5);box-sizing:border-box;">
-        <div style="font-size:3rem;margin-bottom:10px;">💊</div>
-        <h2 style="color:#f9fafb;margin:0 0 6px 0;font-size:clamp(1.2rem,4vw,1.55rem);font-weight:700;">
-          Opdivo Biosimilar Intelligence
-        </h2>
-        <p style="color:#6b7280;font-size:0.82rem;margin:0 0 6px 0;
-                  letter-spacing:0.04em;text-transform:uppercase;">biosimintel.com</p>
-        <p style="color:#9ca3af;font-size:0.88rem;margin:0 0 24px 0;line-height:1.5;">
-          Restricted Access — Enter Access Code to Continue
-        </p>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+    _is_pres = st.session_state.get("theme", "presentation") == "presentation"
+    if _is_pres:
+        st.markdown("""
+        <style>
+        html, body {
+            background-color: #F8F9FA !important;
+            color: #1A202C !important;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        [data-testid="stApp"],
+        [data-testid="stAppViewContainer"],
+        .stApp, .appview-container, .main, .block-container {
+            background-color: #F8F9FA !important;
+            color: #1A202C !important;
+        }
+        [data-testid="stMarkdownContainer"] p,
+        [data-testid="stMarkdownContainer"] span { color: #1A202C !important; }
+        .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+        .stButton > button {
+            background: #0F766E !important;
+            color: #FFFFFF !important;
+            font-weight: 600 !important;
+            border-radius: 8px !important;
+            border: none !important;
+            width: 100% !important;
+            min-height: 48px !important;
+        }
+        input[type="password"], input[type="text"] {
+            font-size: 16px !important;
+            min-height: 44px !important;
+            background-color: #FFFFFF !important;
+            color: #1A202C !important;
+            border-color: #CBD5E0 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        st.markdown("""
+        <div style="display:flex;flex-direction:column;align-items:center;
+                    justify-content:center;padding:2rem 0;">
+          <div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:16px;
+                      padding:clamp(24px,5vw,48px) clamp(20px,6vw,56px);
+                      max-width:420px;width:100%;text-align:center;
+                      box-shadow:0 4px 16px rgba(0,0,0,0.08);box-sizing:border-box;">
+            <div style="font-size:3rem;margin-bottom:10px;">💊</div>
+            <h2 style="color:#1A202C;margin:0 0 6px 0;font-size:clamp(1.2rem,4vw,1.55rem);font-weight:700;">
+              Opdivo Biosimilar Intelligence
+            </h2>
+            <p style="color:#4A5568;font-size:0.85rem;margin:0 0 6px 0;
+                      letter-spacing:0.04em;text-transform:uppercase;">biosimintel.com</p>
+            <p style="color:#4A5568;font-size:0.95rem;margin:0 0 24px 0;line-height:1.5;">
+              Restricted Access — Enter Access Code to Continue
+            </p>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <style>
+        html, body {
+            background-color: #0F172A !important;
+            color: #F1F5F9 !important;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        [data-testid="stApp"],
+        [data-testid="stAppViewContainer"],
+        .stApp, .appview-container, .main, .block-container {
+            background-color: #0F172A !important;
+            color: #F1F5F9 !important;
+        }
+        [data-testid="stMarkdownContainer"] p,
+        [data-testid="stMarkdownContainer"] span { color: #F1F5F9 !important; }
+        .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+        .stButton > button {
+            background: #2DD4BF !important;
+            color: #0F172A !important;
+            font-weight: 600 !important;
+            border-radius: 8px !important;
+            border: none !important;
+            width: 100% !important;
+            min-height: 48px !important;
+        }
+        input[type="password"], input[type="text"] {
+            font-size: 16px !important;
+            min-height: 44px !important;
+            background-color: #1E293B !important;
+            color: #F1F5F9 !important;
+            border-color: #475569 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        st.markdown("""
+        <div style="display:flex;flex-direction:column;align-items:center;
+                    justify-content:center;padding:2rem 0;">
+          <div style="background:#1E293B;border:1px solid #334155;border-radius:16px;
+                      padding:clamp(24px,5vw,48px) clamp(20px,6vw,56px);
+                      max-width:420px;width:100%;text-align:center;
+                      box-shadow:0 8px 32px rgba(0,0,0,0.5);box-sizing:border-box;">
+            <div style="font-size:3rem;margin-bottom:10px;">💊</div>
+            <h2 style="color:#F8FAFC;margin:0 0 6px 0;font-size:clamp(1.2rem,4vw,1.55rem);font-weight:700;">
+              Opdivo Biosimilar Intelligence
+            </h2>
+            <p style="color:#94A3B8;font-size:0.85rem;margin:0 0 6px 0;
+                      letter-spacing:0.04em;text-transform:uppercase;">biosimintel.com</p>
+            <p style="color:#CBD5E1;font-size:0.95rem;margin:0 0 24px 0;line-height:1.5;">
+              Restricted Access — Enter Access Code to Continue
+            </p>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Single-column layout on mobile — no side gutters that crush the input
     with st.container():
@@ -182,320 +238,19 @@ if not st.session_state["authenticated"]:
     # Hard stop — nothing below this line renders until authenticated.
     st.stop()
 
-# ─── Custom CSS (dark-mode biotech theme — mobile-first) ─────────────────────
-st.markdown("""
-<style>
-/* ════════════════════════════════════════════════════════
-   RESET & BASE — force dark bg + light text everywhere
-   Modern Streamlit uses data-testid selectors; [class*="css"]
-   is unreliable in 1.30+, so we target every layer explicitly.
-   ════════════════════════════════════════════════════════ */
-html, body {
-    background-color: #111827 !important;
-    color: #e5e7eb !important;
-    font-family: 'Inter', 'Segoe UI', sans-serif !important;
-}
-
-/* Streamlit root app shell */
-[data-testid="stApp"],
-[data-testid="stAppViewContainer"],
-[data-testid="stAppViewBlockContainer"],
-.stApp, .appview-container, .main {
-    background-color: #111827 !important;
-    color: #e5e7eb !important;
-}
-
-/* Every generic element inside the app */
-[data-testid="stApp"] p,
-[data-testid="stApp"] span,
-[data-testid="stApp"] div,
-[data-testid="stApp"] li,
-[data-testid="stApp"] td,
-[data-testid="stApp"] th,
-[data-testid="stApp"] label {
-    color: #e5e7eb !important;
-}
-
-/* Markdown containers */
-[data-testid="stMarkdownContainer"],
-[data-testid="stMarkdownContainer"] p,
-[data-testid="stMarkdownContainer"] span,
-[data-testid="stMarkdownContainer"] li,
-[data-testid="stMarkdownContainer"] a {
-    color: #e5e7eb !important;
-}
-
-/* Caption / helper text */
-[data-testid="stCaptionContainer"],
-[data-testid="stCaptionContainer"] p {
-    color: #9ca3af !important;
-}
-
-/* Streamlit main container — responsive horizontal padding */
-.block-container {
-    padding-top: 1.5rem !important;
-    padding-left: clamp(0.75rem, 3vw, 3rem) !important;
-    padding-right: clamp(0.75rem, 3vw, 3rem) !important;
-    max-width: 100% !important;
-    background-color: #111827 !important;
-}
-
-/* ---- Sidebar ---- */
-section[data-testid="stSidebar"],
-section[data-testid="stSidebar"] > div {
-    background-color: #1f2937 !important;
-    border-right: 1px solid #374151;
-}
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] div,
-section[data-testid="stSidebar"] label {
-    color: #e5e7eb !important;
-}
-/* Radio items in sidebar */
-section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color: #e5e7eb !important; }
-[data-testid="stSidebarNav"] span { color: #e5e7eb !important; }
-
-/* ---- Form labels / selectbox labels ---- */
-[data-testid="stSelectbox"] label,
-[data-testid="stMultiSelect"] label,
-[data-testid="stTextInput"] label,
-[data-testid="stRadio"] label,
-[data-testid="stCheckbox"] label,
-.stSelectbox label, .stMultiSelect label {
-    color: #d1d5db !important;
-    font-weight: 500;
-}
-
-/* ---- Selectbox / multiselect dropdown text ---- */
-[data-baseweb="select"] [data-testid="stMarkdownContainer"],
-[data-baseweb="select"] span,
-[data-baseweb="select"] div,
-[data-baseweb="tag"] span {
-    color: #e5e7eb !important;
-    background-color: #1f2937 !important;
-}
-[data-baseweb="menu"] { background-color: #1f2937 !important; }
-[data-baseweb="menu"] li { color: #e5e7eb !important; background-color: #1f2937 !important; }
-[data-baseweb="menu"] li:hover { background-color: #374151 !important; }
-
-/* ---- Input fields ---- */
-[data-baseweb="input"] input,
-[data-baseweb="input"] textarea,
-[data-testid="stTextInput"] input {
-    background-color: #1f2937 !important;
-    color: #e5e7eb !important;
-    border-color: #374151 !important;
-    font-size: 16px !important;   /* prevents iOS auto-zoom */
-    min-height: 44px !important;
-}
-
-/* ---- st.info / st.warning / st.error / st.success boxes ---- */
-[data-testid="stAlert"],
-[data-testid="stAlert"] p,
-[data-testid="stAlert"] span,
-[data-testid="stAlert"] div {
-    color: #e5e7eb !important;
-}
-/* Info box specifically */
-[data-testid="stAlert"][kind="info"],
-.stAlert[data-baseweb="notification"][kind="info"] {
-    background-color: #1e3a5f !important;
-    border-color: #3b82f6 !important;
-}
-
-/* ---- KPI cards ---- */
-.kpi-card {
-    background: #1f2937 !important;
-    border: 1px solid #374151;
-    border-radius: 12px;
-    padding: clamp(12px, 3vw, 20px) clamp(10px, 3vw, 24px);
-    text-align: center;
-    min-width: 0;
-    word-break: break-word;
-    color: #e5e7eb !important;
-}
-.kpi-value {
-    font-size: clamp(1.4rem, 4vw, 2.2rem) !important;
-    font-weight: 700 !important;
-    color: #00D4C8 !important;
-    line-height: 1.2;
-}
-.kpi-label {
-    font-size: clamp(0.72rem, 2vw, 0.85rem) !important;
-    color: #9ca3af !important;
-    margin-top: 4px;
-}
-
-/* ---- Update / Verified Intelligence cards ---- */
-.update-card {
-    background: #1f2937 !important;
-    border-left: 4px solid #00D4C8;
-    border-radius: 8px;
-    padding: 14px 16px;
-    margin-bottom: 12px;
-    word-break: break-word;
-    color: #e5e7eb !important;
-}
-.update-card .source { font-size: 0.78rem; color: #9ca3af !important; }
-.update-card .title  { font-weight: 600; margin: 4px 0; color: #f9fafb !important; }
-.update-card .body   { font-size: 0.9rem; color: #d1d5db !important; }
-
-/* ---- Social post cards ---- */
-.post-card {
-    background: #1f2937 !important;
-    border: 1px solid #374151;
-    border-radius: 10px;
-    padding: 12px 14px;
-    margin-bottom: 10px;
-    word-break: break-word;
-    color: #e5e7eb !important;
-}
-.post-card .user  { font-weight: 600; color: #60a5fa !important; }
-.post-card .time  { font-size: 0.78rem; color: #6b7280 !important; margin-left: 8px; }
-.post-card .text  { margin-top: 8px; font-size: 0.9rem; color: #e5e7eb !important; }
-.post-card .post-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-.post-card .post-meta {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-.post-card .platform-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: #111827;
-    border: 1px solid #374151;
-    color: #d1d5db !important;
-    border-radius: 999px;
-    padding: 3px 10px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-}
-.post-card .post-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: #93c5fd !important;
-    font-size: 0.82rem;
-    font-weight: 600;
-    text-decoration: none;
-}
-.post-card .post-link:hover { color: #bfdbfe !important; text-decoration: underline; }
-
-/* ---- Badges ---- */
-.badge-pos { background:#065f46 !important; color:#6ee7b7 !important; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
-.badge-neu { background:#3b3a1e !important; color:#fde68a !important; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
-.badge-neg { background:#7f1d1d !important; color:#fca5a5 !important; padding:2px 10px; border-radius:99px; font-size:0.78rem; white-space:nowrap; }
-
-/* ---- Headings ---- */
-h1, h2, h3, h4, h5, h6 {
-    color: #f9fafb !important;
-}
-h1 { font-size: clamp(1.4rem, 5vw, 2rem) !important; }
-h2 { font-size: clamp(1.1rem, 4vw, 1.5rem) !important; }
-h3 { font-size: clamp(1rem, 3vw, 1.25rem) !important; }
-
-/* ---- Buttons — minimum 44px touch target (Apple HIG) ---- */
-.stButton > button {
-    background: #00D4C8 !important;
-    color: #111827 !important;
-    font-weight: 600 !important;
-    border-radius: 8px !important;
-    border: none !important;
-    min-height: 44px !important;
-    font-size: clamp(0.85rem, 2.5vw, 1rem) !important;
-}
-.stButton > button:hover { background: #00b8ae !important; }
-
-/* ---- Dataframe — force readable text and dark bg ---- */
-.stDataFrame {
-    border-radius: 8px;
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch;
-}
-.stDataFrame table { background-color: #1f2937 !important; }
-.stDataFrame th {
-    background-color: #111827 !important;
-    color: #f9fafb !important;
-    border-bottom: 1px solid #374151 !important;
-}
-.stDataFrame td {
-    background-color: #1f2937 !important;
-    color: #e5e7eb !important;
-    border-color: #374151 !important;
-}
-[data-testid="stDataFrame"] * { color: #e5e7eb !important; }
-
-/* ---- Tabs — scrollable on mobile ---- */
-.stTabs [data-baseweb="tab-list"] {
-    background: #1f2937 !important;
-    border-radius: 8px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    flex-wrap: nowrap;
-}
-.stTabs [data-baseweb="tab"] {
-    color: #9ca3af !important;
-    white-space: nowrap;
-    min-width: fit-content;
-    padding: 8px 12px !important;
-    font-size: clamp(0.78rem, 2vw, 0.9rem) !important;
-}
-.stTabs [aria-selected="true"] {
-    color: #00D4C8 !important;
-    border-bottom-color: #00D4C8 !important;
-}
-
-/* ---- Plotly charts ---- */
-.js-plotly-plot, .plotly { max-width: 100% !important; }
-
-/* ---- Progress banner grid — stack on mobile ---- */
-.banner-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    margin-bottom: 24px;
-}
-
-/* ════════════════════════════════════════════════════════
-   MOBILE  (≤ 640 px)
-   ════════════════════════════════════════════════════════ */
-@media (max-width: 640px) {
-    .block-container {
-        padding-left: 0.6rem !important;
-        padding-right: 0.6rem !important;
-        padding-top: 0.75rem !important;
-    }
-    .kpi-value { font-size: 1.5rem !important; }
-    .kpi-label { font-size: 0.72rem !important; }
-    .kpi-card  { padding: 10px 8px; border-radius: 8px; }
-    .banner-grid { grid-template-columns: 1fr !important; }
-    .stSelectbox, .stRadio { width: 100% !important; }
-    .js-plotly-plot .main-svg { width: 100% !important; }
-    p, li, td, th { font-size: 0.88rem !important; }
-}
-
-/* ════════════════════════════════════════════════════════
-   SMALL TABLET  (641 px – 900 px)
-   ════════════════════════════════════════════════════════ */
-@media (min-width: 641px) and (max-width: 900px) {
-    .kpi-value { font-size: 1.7rem !important; }
-    .block-container {
-        padding-left: 1.25rem !important;
-        padding-right: 1.25rem !important;
-    }
-}
-</style>
-""", unsafe_allow_html=True)
+# ─── Theme CSS injection ──────────────────────────────────────────────────────
+if st.session_state.get("theme", "presentation") == "presentation":
+    st.markdown(_PRESENTATION_CSS, unsafe_allow_html=True)
+    _PLOTLY_TEMPLATE = "plotly_white"
+    _PLOTLY_PAPER_BG = "#F8F9FA"
+    _PLOTLY_PLOT_BG = "#FFFFFF"
+    _PLOTLY_FONT_COLOR = "#1A202C"
+else:
+    st.markdown(_DARK_CSS, unsafe_allow_html=True)
+    _PLOTLY_TEMPLATE = "plotly_dark"
+    _PLOTLY_PAPER_BG = "#0F172A"
+    _PLOTLY_PLOT_BG = "#1E293B"
+    _PLOTLY_FONT_COLOR = "#F1F5F9"
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -729,12 +484,18 @@ with st.sidebar:
             )
         else:
             elapsed_str = "…"
+        _chip_pres = st.session_state.get("theme", "presentation") == "presentation"
+        _chip_bg = "#F0FDFA" if _chip_pres else "#14532d"
+        _chip_border = "#99F6E4" if _chip_pres else "#166534"
+        _chip_text = "#115E59" if _chip_pres else "#bbf7d0"
+        _chip_bold = "#0F766E" if _chip_pres else "#4ade80"
+        _chip_sub = "#4A5568" if _chip_pres else "#86efac"
         st.markdown(
-            f'<div style="background:#14532d;border:1px solid #166534;border-radius:8px;'
-            f'padding:10px 12px;font-size:0.82rem;color:#bbf7d0;line-height:1.6;">'
-            f'<b style="color:#4ade80;">⚙️ Job running</b><br>'
+            f'<div style="background:{_chip_bg};border:1px solid {_chip_border};border-radius:8px;'
+            f'padding:10px 12px;font-size:0.82rem;color:{_chip_text};line-height:1.6;">'
+            f'<b style="color:{_chip_bold};">⚙️ Job running</b><br>'
             f'🕐 {elapsed_str} elapsed<br>'
-            f'<span style="color:#86efac;">See main area for details.</span></div>',
+            f'<span style="color:{_chip_sub};">See main area for details.</span></div>',
             unsafe_allow_html=True,
         )
 
@@ -761,13 +522,19 @@ with st.sidebar:
         _mv = _cached.get("model_version") or MODEL_FAST
         _mv_label = "⚡ Grok 4.1 Fast" if _mv == MODEL_FAST else "🚀 Grok 4.20 Flagship"
         _mv_color = "#6b7280" if _mv == MODEL_FAST else "#fbbf24"
+        _chip_pres = st.session_state.get("theme", "presentation") == "presentation"
+        _chip_bg = "#FFFFFF" if _chip_pres else "#1f2937"
+        _chip_border = "#E2E8F0" if _chip_pres else "#374151"
+        _chip_text = "#4A5568" if _chip_pres else "#9ca3af"
+        _chip_bold = "#1A202C" if _chip_pres else "#d1d5db"
+        _chip_age = "#718096" if _chip_pres else "#6b7280"
         st.markdown(
-            f'<div style="background:#1f2937;border:1px solid #374151;border-radius:8px;'
-            f'padding:10px 12px;font-size:0.80rem;color:#9ca3af;line-height:1.6;">'
-            f'<b style="color:#d1d5db;">📄 Cached Report</b><br>'
+            f'<div style="background:{_chip_bg};border:1px solid {_chip_border};border-radius:8px;'
+            f'padding:10px 12px;font-size:0.80rem;color:{_chip_text};line-height:1.6;">'
+            f'<b style="color:{_chip_bold};">📄 Cached Report</b><br>'
             f'{_ts}<br>'
             f'<span style="color:{_mv_color};font-size:0.75rem;">{_mv_label}</span>&nbsp;'
-            f'<span style="color:#6b7280;">{_age_str}</span></div>',
+            f'<span style="color:{_chip_age};">{_age_str}</span></div>',
             unsafe_allow_html=True,
         )
     else:
@@ -787,6 +554,23 @@ with st.sidebar:
                 st.success("✅ Test email sent! Check your inbox.")
             except Exception as _te:
                 st.error(f"❌ Test email failed: {_te}")
+
+    st.markdown("---")
+    _theme_options = ["🖥️ Presentation Mode", "🌙 Dark Mode"]
+    _theme_index = 0 if st.session_state.get("theme", "presentation") == "presentation" else 1
+    _selected_theme = st.radio(
+        "Theme",
+        _theme_options,
+        index=_theme_index,
+        label_visibility="collapsed",
+        key="_theme_radio",
+    )
+    if _selected_theme == "🖥️ Presentation Mode" and st.session_state.get("theme") != "presentation":
+        st.session_state["theme"] = "presentation"
+        st.rerun()
+    elif _selected_theme == "🌙 Dark Mode" and st.session_state.get("theme") != "dark":
+        st.session_state["theme"] = "dark"
+        st.rerun()
 
     st.markdown("---")
     if st.button("🔒 Log Out", use_container_width=True):
@@ -896,7 +680,57 @@ if st.session_state["surveillance_running"]:
     _progress = min(_elapsed_s / 5400, 0.95)  # 5400s = 90min
     st.progress(_progress, text=f"⏳ Surveillance in progress — {_elapsed_str} elapsed")
 
-    _PULSE_CSS = """
+    _is_pres_banner = st.session_state.get("theme", "presentation") == "presentation"
+    if _is_pres_banner:
+        _BANNER_BG = "#FFFFFF"
+        _BANNER_BORDER = "#0F766E"
+        _BANNER_SHADOW = "0 4px 24px rgba(15,118,110,0.12), 0 1px 4px rgba(0,0,0,0.06)"
+        _TITLE_COLOR = "#0F766E"
+        _SUBTITLE_COLOR = "#4A5568"
+        _STAT_BG = "#F7FAFC"
+        _STAT_BORDER = "#E2E8F0"
+        _STAT_LABEL = "#4A5568"
+        _STAT_VALUE = "#1A202C"
+        _PHASE_COLOR = "#0F766E"
+        _CYCLE_BG = "#F0FDFA"
+        _CYCLE_BORDER = "#99F6E4"
+        _CYCLE_TITLE = "#115E59"
+        _CYCLE_SUB = "#4A5568"
+        _FOOTER_BG = "#F8F9FA"
+        _FOOTER_BORDER = "#E2E8F0"
+        _FOOTER_TEXT = "#4A5568"
+        _FOOTER_ACCENT = "#0F766E"
+        _FOOTER_BOLD = "#1A202C"
+        _PULSE_CSS_BANNER = """
+<style>
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.3); }
+  70% { box-shadow: 0 0 0 10px rgba(15, 118, 110, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(15, 118, 110, 0); }
+}
+</style>
+"""
+    else:
+        _BANNER_BG = "linear-gradient(160deg,#0d1f1a 0%,#0f2d22 60%,#0d1f1a 100%)"
+        _BANNER_BORDER = "#16a34a"
+        _BANNER_SHADOW = "0 8px 48px rgba(22,163,74,0.18), 0 2px 8px rgba(0,0,0,0.5)"
+        _TITLE_COLOR = "#4ade80"
+        _SUBTITLE_COLOR = "#86efac"
+        _STAT_BG = "rgba(20,83,45,0.35)"
+        _STAT_BORDER = "#166534"
+        _STAT_LABEL = "#86efac"
+        _STAT_VALUE = "#f0fdf4"
+        _PHASE_COLOR = "#4ade80"
+        _CYCLE_BG = "rgba(5,46,22,0.7)"
+        _CYCLE_BORDER = "#15803d"
+        _CYCLE_TITLE = "#bbf7d0"
+        _CYCLE_SUB = "#6ee7b7"
+        _FOOTER_BG = "rgba(17,24,39,0.6)"
+        _FOOTER_BORDER = "#374151"
+        _FOOTER_TEXT = "#9ca3af"
+        _FOOTER_ACCENT = "#6ee7b7"
+        _FOOTER_BOLD = "#d1fae5"
+        _PULSE_CSS_BANNER = """
 <style>
 @keyframes pulse-border {
   0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4); }
@@ -905,16 +739,17 @@ if st.session_state["surveillance_running"]:
 }
 </style>
 """
+
     st.markdown(
-        _PULSE_CSS
+        _PULSE_CSS_BANNER
         + f"""
 <div style="
-  background: linear-gradient(160deg,#0d1f1a 0%,#0f2d22 60%,#0d1f1a 100%);
-  border: 2px solid #16a34a;
+  background: {_BANNER_BG};
+  border: 2px solid {_BANNER_BORDER};
   border-radius: 20px;
   padding: 44px 48px 36px;
   margin-bottom: 32px;
-  box-shadow: 0 8px 48px rgba(22,163,74,0.18), 0 2px 8px rgba(0,0,0,0.5);
+  box-shadow: {_BANNER_SHADOW};
   animation: pulse-border 2s infinite;
 ">
 
@@ -922,47 +757,47 @@ if st.session_state["surveillance_running"]:
   <div style="display:flex;align-items:flex-start;gap:18px;margin-bottom:28px;">
     <div style="font-size:2.8rem;line-height:1;flex-shrink:0;">🛰️</div>
     <div>
-      <div style="color:#4ade80;font-size:1.5rem;font-weight:800;letter-spacing:-0.02em;line-height:1.2;">
+      <div style="color:{_TITLE_COLOR};font-size:1.5rem;font-weight:800;letter-spacing:-0.02em;line-height:1.2;">
         Surveillance Job Running
       </div>
-      <div style="color:#86efac;font-size:0.92rem;margin-top:6px;">
-        Powered by AI surveillance engine · typically takes <b style="color:#a7f3d0;">{_eta}</b>.
+      <div style="color:{_SUBTITLE_COLOR};font-size:0.92rem;margin-top:6px;">
+        Powered by AI surveillance engine · typically takes <b style="color:{_SUBTITLE_COLOR};">{_eta}</b>.
       </div>
     </div>
   </div>
 
   <!-- Stats grid -->
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px;">
-    <div style="background:rgba(20,83,45,0.35);border:1px solid #166534;border-radius:12px;padding:18px 20px;">
-      <div style="color:#86efac;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.09em;margin-bottom:6px;">⏱ Job Running For</div>
-      <div style="color:#f0fdf4;font-size:1.75rem;font-weight:800;letter-spacing:-0.02em;">{_elapsed_str}</div>
+    <div style="background:{_STAT_BG};border:1px solid {_STAT_BORDER};border-radius:12px;padding:18px 20px;">
+      <div style="color:{_STAT_LABEL};font-size:0.72rem;text-transform:uppercase;letter-spacing:0.09em;margin-bottom:6px;">⏱ Job Running For</div>
+      <div style="color:{_STAT_VALUE};font-size:1.75rem;font-weight:800;letter-spacing:-0.02em;">{_elapsed_str}</div>
     </div>
-    <div style="background:rgba(20,83,45,0.35);border:1px solid #166534;border-radius:12px;padding:18px 20px;">
-      <div style="color:#86efac;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.09em;margin-bottom:6px;">⏳ Estimated Duration</div>
-      <div style="color:#f0fdf4;font-size:1.1rem;font-weight:700;">{_eta}</div>
+    <div style="background:{_STAT_BG};border:1px solid {_STAT_BORDER};border-radius:12px;padding:18px 20px;">
+      <div style="color:{_STAT_LABEL};font-size:0.72rem;text-transform:uppercase;letter-spacing:0.09em;margin-bottom:6px;">⏳ Estimated Duration</div>
+      <div style="color:{_STAT_VALUE};font-size:1.1rem;font-weight:700;">{_eta}</div>
     </div>
-    <div style="background:rgba(20,83,45,0.35);border:1px solid #166534;border-radius:12px;padding:18px 20px;">
-      <div style="color:#86efac;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.09em;margin-bottom:6px;">📡 Current Phase</div>
-      <div style="color:#4ade80;font-size:0.88rem;font-weight:600;line-height:1.4;">{_status_line}</div>
+    <div style="background:{_STAT_BG};border:1px solid {_STAT_BORDER};border-radius:12px;padding:18px 20px;">
+      <div style="color:{_STAT_LABEL};font-size:0.72rem;text-transform:uppercase;letter-spacing:0.09em;margin-bottom:6px;">📡 Current Phase</div>
+      <div style="color:{_PHASE_COLOR};font-size:0.88rem;font-weight:600;line-height:1.4;">{_status_line}</div>
     </div>
   </div>
 
   <!-- Cycling activity message -->
-  <div style="background:rgba(5,46,22,0.7);border:1px solid #15803d;border-radius:12px;
+  <div style="background:{_CYCLE_BG};border:1px solid {_CYCLE_BORDER};border-radius:12px;
               padding:18px 22px;margin-bottom:18px;display:flex;align-items:center;gap:14px;">
     <div style="font-size:1.7rem;flex-shrink:0;">{_cycle_icon}</div>
     <div>
-      <div style="color:#bbf7d0;font-size:1.0rem;font-weight:600;">{_cycle_msg}</div>
-      <div style="color:#6ee7b7;font-size:0.78rem;margin-top:3px;">Processing step {_cycle_idx + 1} of {len(_CYCLE_MSGS)} · updates every 30 seconds</div>
+      <div style="color:{_CYCLE_TITLE};font-size:1.0rem;font-weight:600;">{_cycle_msg}</div>
+      <div style="color:{_CYCLE_SUB};font-size:0.78rem;margin-top:3px;">Processing step {_cycle_idx + 1} of {len(_CYCLE_MSGS)} · updates every 30 seconds</div>
     </div>
   </div>
 
   <!-- Info footer -->
-  <div style="background:rgba(17,24,39,0.6);border:1px solid #374151;border-radius:10px;
-              padding:14px 18px;color:#9ca3af;font-size:0.86rem;line-height:1.8;">
-    <span style="color:#6ee7b7;">💡</span> <b style="color:#d1fae5;">{_close_note}</b><br>
-    <span style="color:#6ee7b7;">🔄</span> This page auto-refreshes every 15 seconds — new results appear automatically when ready.<br>
-    <span style="color:#6ee7b7;">🚫</span> The <b style="color:#d1fae5;">Run Flagship</b> button is locked until this job completes.
+  <div style="background:{_FOOTER_BG};border:1px solid {_FOOTER_BORDER};border-radius:10px;
+              padding:14px 18px;color:{_FOOTER_TEXT};font-size:0.86rem;line-height:1.8;">
+    <span style="color:{_FOOTER_ACCENT};">💡</span> <b style="color:{_FOOTER_BOLD};">{_close_note}</b><br>
+    <span style="color:{_FOOTER_ACCENT};">🔄</span> This page auto-refreshes every 15 seconds — new results appear automatically when ready.<br>
+    <span style="color:{_FOOTER_ACCENT};">🚫</span> The <b style="color:{_FOOTER_BOLD};">Run Flagship</b> button is locked until this job completes.
   </div>
 
 </div>
@@ -1004,14 +839,23 @@ if page == "📊 Dashboard":
             _rpt_ts = latest.get("run_date", "")[:19].replace("T", " ")
             _strip_col, _hist_col = st.columns([6, 1])
             with _strip_col:
+                _strip_pres = st.session_state.get("theme", "presentation") == "presentation"
+                _strip_bg = "#FFFFFF" if _strip_pres else "#1f2937"
+                _strip_border = "#E2E8F0" if _strip_pres else "#374151"
+                _strip_text = "#4A5568" if _strip_pres else "#9ca3af"
+                _strip_accent = "#0F766E" if _strip_pres else "#00D4C8"
+                _strip_bold = "#1A202C" if _strip_pres else "#d1d5db"
+                _strip_ts = "#1A202C" if _strip_pres else "#f9fafb"
+                _strip_age = "#718096" if _strip_pres else "#6b7280"
+                _strip_muted = "#A0AEC0" if _strip_pres else "#4b5563"
                 st.markdown(
-                    f'<div style="background:#1f2937;border:1px solid #374151;border-radius:8px;'
-                    f'padding:9px 16px;font-size:0.82rem;color:#9ca3af;line-height:1.7;">'
-                    f'<span style="color:#00D4C8;font-size:1rem;">📋</span>&nbsp;'
-                    f'Showing <b style="color:#d1d5db;">latest report</b> from '
-                    f'<b style="color:#f9fafb;">{_rpt_ts}</b>'
-                    f'&nbsp;<span style="color:#6b7280;">({_rpt_age_str})</span>'
-                    f'&nbsp;·&nbsp;<span style="color:#4b5563;">'
+                    f'<div style="background:{_strip_bg};border:1px solid {_strip_border};border-radius:8px;'
+                    f'padding:9px 16px;font-size:0.82rem;color:{_strip_text};line-height:1.7;">'
+                    f'<span style="color:{_strip_accent};font-size:1rem;">📋</span>&nbsp;'
+                    f'Showing <b style="color:{_strip_bold};">latest report</b> from '
+                    f'<b style="color:{_strip_ts};">{_rpt_ts}</b>'
+                    f'&nbsp;<span style="color:{_strip_age};">({_rpt_age_str})</span>'
+                    f'&nbsp;·&nbsp;<span style="color:{_strip_muted};">'
                     f'Run a new sweep to refresh.</span>'
                     f'</div>',
                     unsafe_allow_html=True,
@@ -1290,19 +1134,26 @@ elif page == "🔬 Pipeline Tracker":
             f'</tr>'
         )
 
+    _tbl_pres = st.session_state.get("theme", "presentation") == "presentation"
+    _tbl_bg = "#FFFFFF" if _tbl_pres else "#1f2937"
+    _tbl_border = "#E2E8F0" if _tbl_pres else "#374151"
+    _tbl_hd_bg = "#F7FAFC" if _tbl_pres else "#111827"
+    _tbl_hd_border = "#E2E8F0" if _tbl_pres else "#374151"
+    _tbl_text = "#1A202C" if _tbl_pres else "#f3f4f6"
+    _tbl_th = "#4A5568" if _tbl_pres else "#9ca3af"
     html_table = f"""
-    <div style="overflow-x:auto;border-radius:10px;border:1px solid #374151;">
-    <table style="width:100%;border-collapse:collapse;background:#1f2937;color:#f3f4f6;font-size:0.9rem;">
+    <div style="overflow-x:auto;border-radius:10px;border:1px solid {_tbl_border};">
+    <table style="width:100%;border-collapse:collapse;background:{_tbl_bg};color:{_tbl_text};font-size:0.9rem;">
       <thead>
-        <tr style="background:#111827;border-bottom:2px solid #374151;">
-          <th style="padding:12px;text-align:left;color:#9ca3af;">Company</th>
-          <th style="padding:12px;text-align:left;color:#9ca3af;">Biosimilar</th>
-          <th style="padding:12px;text-align:left;color:#9ca3af;">Phase</th>
-          <th style="padding:12px;text-align:left;color:#9ca3af;">Status</th>
-          <th style="padding:12px;text-align:left;color:#9ca3af;">Countries</th>
-          <th style="padding:12px;text-align:left;color:#9ca3af;">Est. Launch</th>
-          <th style="padding:12px;text-align:left;color:#9ca3af;">Probability</th>
-          <th style="padding:12px;text-align:left;color:#9ca3af;">Notes</th>
+        <tr style="background:{_tbl_hd_bg};border-bottom:2px solid {_tbl_hd_border};">
+          <th style="padding:12px;text-align:left;color:{_tbl_th};">Company</th>
+          <th style="padding:12px;text-align:left;color:{_tbl_th};">Biosimilar</th>
+          <th style="padding:12px;text-align:left;color:{_tbl_th};">Phase</th>
+          <th style="padding:12px;text-align:left;color:{_tbl_th};">Status</th>
+          <th style="padding:12px;text-align:left;color:{_tbl_th};">Countries</th>
+          <th style="padding:12px;text-align:left;color:{_tbl_th};">Est. Launch</th>
+          <th style="padding:12px;text-align:left;color:{_tbl_th};">Probability</th>
+          <th style="padding:12px;text-align:left;color:{_tbl_th};">Notes</th>
         </tr>
       </thead>
       <tbody>
@@ -1324,11 +1175,11 @@ elif page == "🔬 Pipeline Tracker":
         color="probability",
         color_continuous_scale=[[0, "#ef4444"], [0.5, "#f59e0b"], [1, "#10b981"]],
         labels={"probability": "Probability (%)", "company": ""},
-        template="plotly_dark",
+        template=_PLOTLY_TEMPLATE,
     )
     fig.update_layout(
-        paper_bgcolor="#111827",
-        plot_bgcolor="#1f2937",
+        paper_bgcolor=_PLOTLY_PAPER_BG,
+        plot_bgcolor=_PLOTLY_PLOT_BG,
         coloraxis_showscale=False,
         height=max(300, len(fdf) * 36),
     )
@@ -1419,8 +1270,8 @@ elif page == "📣 Social Noise":
             hole=0.45,
         ))
         pie.update_layout(
-            paper_bgcolor="#111827",
-            font_color="#f3f4f6",
+            paper_bgcolor=_PLOTLY_PAPER_BG,
+            font_color=_PLOTLY_FONT_COLOR,
             showlegend=True,
             height=280,
             margin=dict(t=20, b=20, l=20, r=20),
@@ -1552,9 +1403,9 @@ elif page == "🤖 AI Insights":
                 )
             )
             fig_heat.update_layout(
-                template="plotly_dark",
-                paper_bgcolor="#111827",
-                plot_bgcolor="#1f2937",
+                template=_PLOTLY_TEMPLATE,
+                paper_bgcolor=_PLOTLY_PAPER_BG,
+                plot_bgcolor=_PLOTLY_PLOT_BG,
                 margin=dict(t=10, b=10, l=10, r=10),
                 height=max(280, 42 * len(risk_df)),
                 yaxis=dict(autorange="reversed"),
@@ -1618,14 +1469,14 @@ elif page == "📅 Timeline":
         color="Phase",
         color_discrete_map=PHASE_COLORS,
         hover_data=["Biosimilar", "Probability"],
-        template="plotly_dark",
+        template=_PLOTLY_TEMPLATE,
         title="Estimated Phase Timeline (next 24 months)",
     )
     fig_gantt.update_yaxes(autorange="reversed")
     fig_gantt.update_layout(
-        paper_bgcolor="#111827",
-        plot_bgcolor="#1f2937",
-        font_color="#f3f4f6",
+        paper_bgcolor=_PLOTLY_PAPER_BG,
+        plot_bgcolor=_PLOTLY_PLOT_BG,
+        font_color=_PLOTLY_FONT_COLOR,
         height=max(400, len(companies) * 44),
         legend_title_text="Phase",
     )
@@ -1875,14 +1726,20 @@ elif page == "🌍 LR Markets":
 
                         with col:
                             # Card header
+                            _threat_pres = st.session_state.get("theme", "presentation") == "presentation"
+                            _threat_bg = "#FFFFFF" if _threat_pres else "#1f2937"
+                            _threat_text = "#1A202C" if _threat_pres else "#f3f4f6"
+                            _threat_sub = "#4A5568" if _threat_pres else "#94a3b8"
+                            _threat_muted = "#718096" if _threat_pres else "#cbd5e1"
+                            _threat_border = "#E2E8F0" if _threat_pres else "#374151"
                             st.markdown(
-                                f'<div style="background:#1f2937;border:1px solid {rs["bg"]};'
+                                f'<div style="background:{_threat_bg};border:1px solid {rs["bg"]};'
                                 f'border-top:3px solid {rs["bg"]};border-radius:8px;'
                                 f'padding:12px 14px;margin-bottom:10px;">'
                                 f'<div style="display:flex;justify-content:space-between;'
                                 f'align-items:center;margin-bottom:8px;">'
                                 f'<span style="font-weight:700;font-size:0.95rem;'
-                                f'color:#f3f4f6;">📍 {country}</span>'
+                                f'color:{_threat_text};">📍 {country}</span>'
                                 f'<span style="background:{rs["bg"]};color:{rs["fg"]};'
                                 f'padding:2px 9px;border-radius:99px;font-size:0.72rem;'
                                 f'font-weight:700;">{rs["emoji"]} {worst_risk}</span>'
@@ -1895,23 +1752,23 @@ elif page == "🌍 LR Markets":
                                 ttt   = _ttt(est, phase)
                                 acts  = _actions(phase, t.get("risk_level", "Low"))
                                 ttt_color = (
-                                    "#ef4444" if "Imminent" in ttt or "Already" in ttt
-                                    else "#f59e0b" if "months" in ttt
-                                    else "#9ca3af"
+                                    "#DC2626" if "Imminent" in ttt or "Already" in ttt
+                                    else "#D97706" if "months" in ttt
+                                    else "#718096" if _threat_pres else "#9ca3af"
                                 )
                                 acts_html = "".join(
                                     f'<li style="margin:2px 0;">{a}</li>' for a in acts
                                 )
                                 st.markdown(
-                                    f'<div style="border-top:1px solid #374151;'
+                                    f'<div style="border-top:1px solid {_threat_border};'
                                     f'padding-top:8px;margin-top:6px;">'
-                                    f'<div style="font-weight:600;color:#e2e8f0;'
+                                    f'<div style="font-weight:600;color:{_threat_text};'
                                     f'font-size:0.85rem;">{_esc(t.get("company",""))}</div>'
-                                    f'<div style="color:#94a3b8;font-size:0.78rem;'
+                                    f'<div style="color:{_threat_sub};font-size:0.78rem;'
                                     f'margin-bottom:4px;">{_esc(t.get("biosimilar",""))} &nbsp;·&nbsp; {_esc(phase)}</div>'
                                     f'<div style="color:{ttt_color};font-size:0.78rem;'
                                     f'font-weight:600;margin-bottom:6px;">⏱ {_esc(ttt)}</div>'
-                                    f'<div style="color:#cbd5e1;font-size:0.75rem;">'
+                                    f'<div style="color:{_threat_muted};font-size:0.75rem;">'
                                     f'<strong>Ops Actions:</strong>'
                                     f'<ul style="margin:3px 0 0 14px;padding:0;">'
                                     f'{acts_html}</ul></div>'
