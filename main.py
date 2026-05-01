@@ -1954,15 +1954,37 @@ elif page == "🧪 Model Lab":
     st.title("🧪 Model Comparison Lab")
     st.caption("Compare how different AI models analyzed the same surveillance date")
 
-    # Build reverse mapping: slug → display name
+    # ── Helpers ──
     _SLUG_TO_DISPLAY = {v: k for k, v in _MODEL_OPTIONS.items()}
+
+    def _get_model_name(model_slug: str | None) -> str:
+        if not model_slug:
+            return "Legacy Report"
+        return _SLUG_TO_DISPLAY.get(model_slug, model_slug.split("/")[-1].replace("-", " ").title())
+
+    def _extract_companies(raw: dict) -> list:
+        """Handle both old schema (companies) and clinical-rewrite schema (pipeline_tracker)."""
+        if "companies" in raw and raw["companies"]:
+            return raw["companies"]
+        if "pipeline_tracker" in raw and raw["pipeline_tracker"]:
+            return raw["pipeline_tracker"]
+        return []
+
+    def _extract_summary(raw: dict) -> str:
+        return raw.get("executive_summary", "") or raw.get("ai_insights", "") or "No summary generated"
+
+    def _extract_verified(raw: dict) -> list:
+        return raw.get("verified_updates", []) or []
+
+    def _extract_threats(raw: dict) -> list:
+        return raw.get("my_markets_threat", []) or []
 
     # Get all reports with model_version
     _all = get_all_reports()
     _dated = {}
     for r in _all:
         _d = r.get("run_date", "")[:10]
-        _m = r.get("model_version", "Legacy")
+        _m = r.get("model_version") or "Legacy"
         if _d not in _dated:
             _dated[_d] = {}
         _dated[_d][_m] = r
@@ -1978,104 +2000,146 @@ elif page == "🧪 Model Lab":
         st.markdown(f"### Reports for {_sel_date}")
         st.caption(f"Found {len(_reports)} model(s) for this date")
 
+        # ── COMPANY FINDINGS COMPARISON ──
+        st.markdown("---")
+        st.subheader("🏢 Who Found Which Competitors?")
+
+        _companies_found = {}
+        for model, report in _reports.items():
+            raw = json.loads(report.get("raw_json", "{}"))
+            _comps = _extract_companies(raw)
+            _companies_found[_get_model_name(model)] = {
+                "count": len(_comps),
+                "launched": [c.get("company", "Unknown") for c in _comps if c.get("phase") == "Launched"],
+                "phase3": [c.get("company", "Unknown") for c in _comps if c.get("phase") == "Phase III"],
+                "approved": [c.get("company", "Unknown") for c in _comps if c.get("phase") == "Approved"],
+            }
+
+        _st = st.container()
+        for _model_name, _data in _companies_found.items():
+            with _st.expander(f"{_model_name} — {_data['count']} companies found"):
+                if _data["launched"]:
+                    st.markdown(f"🚀 **Launched:** {', '.join(_data['launched'])}")
+                if _data["approved"]:
+                    st.markdown(f"✅ **Approved:** {', '.join(_data['approved'])}")
+                if _data["phase3"]:
+                    st.markdown(f"🔬 **Phase III:** {', '.join(_data['phase3'])}")
+                if not any([_data["launched"], _data["approved"], _data["phase3"]]):
+                    st.caption("No advanced-phase competitors detected")
+
+        # ── THREAT LANDSCAPE COMPARISON ──
+        st.markdown("---")
+        st.subheader("🌍 Threat Landscape by Model")
+
+        _threat_data = {}
+        for model, report in _reports.items():
+            raw = json.loads(report.get("raw_json", "{}"))
+            _threats = _extract_threats(raw)
+            _model_name = _get_model_name(model)
+            _threat_data[_model_name] = {
+                "high": [t.get("country", "Unknown") for t in _threats if t.get("risk_level") == "High"],
+                "medium": [t.get("country", "Unknown") for t in _threats if t.get("risk_level") == "Medium"],
+                "launched_countries": [t.get("country", "Unknown") for t in _threats if t.get("phase") == "Launched"],
+            }
+
+        _threat_cols = st.columns(len(_threat_data))
+        for i, (_model_name, _t) in enumerate(_threat_data.items()):
+            with _threat_cols[i]:
+                st.markdown(f"**{_model_name}**")
+                st.metric("High Risk", len(_t["high"]))
+                st.metric("Medium Risk", len(_t["medium"]))
+                if _t["launched_countries"]:
+                    st.caption(f"🚀 Launched in: {', '.join(_t['launched_countries'][:3])}")
+
         # ── EXECUTIVE SUMMARY SHOWDOWN ──
         st.markdown("---")
         st.subheader("🥊 Executive Summary Showdown")
-        _cols = st.columns(len(_reports))
-        for i, (model, report) in enumerate(_reports.items()):
-            raw = json.loads(report.get("raw_json", "{}"))
-            _friendly = _SLUG_TO_DISPLAY.get(model, model)
-            with _cols[i]:
-                st.markdown(f"**{_friendly}**")
-                _summary = raw.get("executive_summary", "No summary")
-                st.info(_summary[:250] if len(_summary) > 250 else _summary)
-                if len(_summary) > 250:
-                    st.caption(f"... ({len(_summary)} chars total)")
 
-        # ── SCORING MATRIX ──
-        st.markdown("---")
-        st.subheader("📊 Quality Scorecard")
-
-        _scores = []
+        _valid_summaries = {}
         for model, report in _reports.items():
             raw = json.loads(report.get("raw_json", "{}"))
-            _friendly = _SLUG_TO_DISPLAY.get(model, model)
+            _summ = _extract_summary(raw)
+            if _summ and _summ != "No summary generated":
+                _valid_summaries[_get_model_name(model)] = _summ
 
-            # Metric 1: URL reachability
-            _verified = [u for u in raw.get("verified_updates", []) if u.get("url") and u.get("url_verified")]
-            _total_updates = len(raw.get("verified_updates", []))
-            _url_score = len(_verified) / max(_total_updates, 1) * 100
+        if _valid_summaries:
+            _sum_cols = st.columns(len(_valid_summaries))
+            for i, (model_name, summary) in enumerate(_valid_summaries.items()):
+                with _sum_cols[i]:
+                    st.markdown(f"**{model_name}**")
+                    st.info(summary[:300])
+                    if len(summary) > 300:
+                        with st.expander("Read full summary"):
+                            st.write(summary)
+        else:
+            st.warning("No executive summaries found for comparison. Run surveillance with multiple models on the same date.")
 
-            # Metric 2: Company coverage
-            _companies = raw.get("companies", [])
-            _company_count = len(_companies)
-            _coverage_score = min(_company_count / 16 * 100, 100)
-
-            # Metric 3: Country coverage
-            _threats = raw.get("my_markets_threat", [])
-            _countries_covered = len(set(t.get("country") for t in _threats if t.get("country")))
-            _country_score = min(_countries_covered / 37 * 100, 100)
-
-            # Metric 4: Executive summary length (quality proxy)
-            _summary_len = len(raw.get("executive_summary", ""))
-            _summary_score = min(_summary_len / 120 * 100, 100) if _summary_len > 0 else 0
-
-            _avg = (_url_score + _coverage_score + _country_score + _summary_score) / 4
-
-            _scores.append({
-                "model": _friendly,
-                "url_score": round(_url_score, 1),
-                "coverage_score": round(_coverage_score, 1),
-                "country_score": round(_country_score, 1),
-                "summary_score": round(_summary_score, 1),
-                "overall": round(_avg, 1),
-                "companies_found": _company_count,
-                "urls_verified": len(_verified),
-                "countries_covered": _countries_covered,
-            })
-
-        _score_df = {
-            "Model": [s["model"] for s in _scores],
-            "URL Quality %": [s["url_score"] for s in _scores],
-            "Company Coverage %": [s["coverage_score"] for s in _scores],
-            "Country Coverage %": [s["country_score"] for s in _scores],
-            "Summary Quality %": [s["summary_score"] for s in _scores],
-            "Overall Score": [s["overall"] for s in _scores],
-        }
-        st.dataframe(_score_df, use_container_width=True, hide_index=True)
-
-        # Highlight winner
-        _winner = max(_scores, key=lambda x: x["overall"])
-        st.success(f"🏆 Winner for {_sel_date}: {_winner['model']} (Overall: {_winner['overall']}%)")
-
-        # ── DETAIL COMPARISON ──
+        # ── RECOMMENDATIONS SHOWDOWN ──
         st.markdown("---")
-        st.subheader("🔍 Detailed Comparison")
+        st.subheader("🎯 Recommended Actions Comparison")
 
-        _comp_tabs = st.tabs([s["model"] for s in _scores])
-        for i, (model, report) in enumerate(_reports.items()):
+        _recs = {}
+        for model, report in _reports.items():
             raw = json.loads(report.get("raw_json", "{}"))
-            with _comp_tabs[i]:
-                _c1, _c2 = st.columns(2)
-                with _c1:
-                    st.metric("Companies Found", len(raw.get("companies", [])))
-                    st.metric("Verified Updates", len(raw.get("verified_updates", [])))
-                    st.metric("Social Noise Items", len(raw.get("social_noise", [])))
-                with _c2:
-                    _threats = raw.get("my_markets_threat", [])
-                    _high = len([t for t in _threats if t.get("risk_level") == "High"])
-                    _med = len([t for t in _threats if t.get("risk_level") == "Medium"])
-                    st.metric("High Risk Markets", _high)
-                    st.metric("Medium Risk Markets", _med)
+            _model_name = _get_model_name(model)
+            _all_recs = []
+            for t in raw.get("my_markets_threat", []):
+                _all_recs.extend(t.get("recommended_actions", []))
+            _recs[_model_name] = list(dict.fromkeys(_all_recs))[:5]
 
-                with st.expander("View Full Executive Summary"):
-                    st.write(raw.get("executive_summary", "No summary"))
+        for _model_name, _actions in _recs.items():
+            with st.expander(f"{_model_name} — Top Recommendations"):
+                for _a in _actions:
+                    st.markdown(f"- {_a}")
+                if not _actions:
+                    st.caption("No specific recommendations generated")
 
-                with st.expander("View Verified Updates"):
-                    for u in raw.get("verified_updates", []):
-                        st.markdown(f"- **{u.get('title', 'Untitled')}** ({u.get('source', 'Unknown')})")
-                        if u.get("url"):
-                            st.caption(f"[Source ↗]({u['url']})")
+        # ── URL VERIFICATION COMPARISON ──
+        st.markdown("---")
+        st.subheader("🔗 URL Quality Comparison")
+
+        _url_data = {}
+        for model, report in _reports.items():
+            raw = json.loads(report.get("raw_json", "{}"))
+            _updates = _extract_verified(raw)
+            _verified = [u for u in _updates if u.get("url") and u.get("url_verified")]
+            _model_name = _get_model_name(model)
+            _url_data[_model_name] = {
+                "total": len(_updates),
+                "verified": len(_verified),
+                "sources": list(set(u.get("source", "Unknown") for u in _updates))[:5],
+            }
+
+        _url_cols = st.columns(len(_url_data))
+        for i, (_model_name, _u) in enumerate(_url_data.items()):
+            with _url_cols[i]:
+                st.markdown(f"**{_model_name}**")
+                if _u["total"] > 0:
+                    _pct = round(_u["verified"] / _u["total"] * 100, 1)
+                    st.metric("Verified URLs", f"{_u['verified']}/{_u['total']}", f"{_pct}%")
+                else:
+                    st.metric("Verified URLs", "0/0")
+                if _u["sources"]:
+                    st.caption(f"Sources: {', '.join(_u['sources'])}")
+
+        # ── WINNER BADGE ──
+        st.markdown("---")
+        _winner_score = {}
+        for _model_name in _companies_found.keys():
+            _c_score = _companies_found[_model_name]["count"]
+            _t_score = len(_threat_data.get(_model_name, {}).get("high", []))
+            _u_score = _url_data.get(_model_name, {}).get("verified", 0)
+            _winner_score[_model_name] = _c_score * 2 + _t_score * 3 + _u_score
+
+        if _winner_score:
+            _winner_name = max(_winner_score, key=_winner_score.get)
+            _winner_points = _winner_score[_winner_name]
+            st.success(
+                f"🏆 Winner for {_sel_date}: **{_winner_name}** "
+                f"(Score: {_winner_points} — based on companies found ×2 + high-risk markets ×3 + verified URLs)"
+            )
+        else:
+            st.info("Run surveillance with multiple models to generate a winner comparison.")
 
         # ── COST COMPARISON ──
         st.markdown("---")
@@ -2087,5 +2151,5 @@ elif page == "🧪 Model Lab":
             "deepseek/deepseek-v4-pro": "~$0.08",
         }
         for model in _reports.keys():
-            _friendly = _SLUG_TO_DISPLAY.get(model, model)
+            _friendly = _get_model_name(model)
             st.caption(f"{_friendly}: {_cost_map.get(model, 'N/A')}")
