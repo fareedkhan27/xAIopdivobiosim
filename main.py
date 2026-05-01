@@ -618,16 +618,13 @@ def reconcile_job_state_from_agent() -> bool:
     return _changed
 
 
-# NOTE: reconcile_job_state_from_agent() is intentionally NOT called here at
-# the top level.  When JOB_STATUS["phase"] is "done" and a report exists in DB
-# the function returns _changed=True on every rerun, triggering an infinite
-# st.rerun() loop that prevents the dashboard from loading.
-# Job-completion detection is handled instead inside the progress banner block
-# (search for "Fast-path: job is truly done") which only runs while a job is
-# actively in flight (surveillance_running == True).
-#
-# if reconcile_job_state_from_agent():
-#     st.rerun()
+# reconcile_job_state_from_agent() is NOT called at the top level.
+# Calling it unconditionally causes an infinite st.rerun() loop because
+# JOB_STATUS["phase"] persists as "done" for the lifetime of the server
+# process, making the function return _changed=True on every page load.
+# It is called safely inside the progress banner block below, which is
+# guarded by `if st.session_state["surveillance_running"]:` — so it only
+# ever executes while a job is genuinely in flight.
 
 
 # (Session state and password gate have already run at the top of the file.)
@@ -851,6 +848,19 @@ if st.session_state["surveillance_running"]:
         else "Keep this tab open until the job finishes."
     )
 
+    # ── Safe job-completion check (only runs because surveillance_running is True) ──
+    # reconcile_job_state_from_agent() inspects the agent's JOB_STATUS phase.
+    # If the worker has finished (phase in {done, complete, finalizing} + DB
+    # row verified), it: loads the latest report into last_report, clears
+    # surveillance_running / job_start_time / run_status / active_job_token,
+    # and returns True.  We then rerun once so the dashboard renders the new
+    # report immediately without the user having to refresh.
+    # This is safe here because the entire block is guarded by
+    # `if st.session_state["surveillance_running"]:` above — so the function
+    # only ever executes while a job is genuinely in flight.
+    if reconcile_job_state_from_agent():
+        st.rerun()
+
     # Read live phase from agent module (set by worker thread)
     try:
         import agent as _agent_mod
@@ -860,19 +870,6 @@ if st.session_state["surveillance_running"]:
     except Exception:
         _job_phase  = "running"
         _job_detail = ""
-
-    # Fast-path: job is truly done — skip the banner, clear state, show report.
-    if _job_phase in {"done", "complete"}:
-        st.session_state["surveillance_running"] = False
-        st.session_state["job_start_time"]       = None
-        st.session_state["run_status"]           = ""
-        st.session_state["active_job_token"]     = ""
-        if not st.session_state.get("job_completed_today"):
-            st.session_state["job_completed_today"] = True
-        _fresh = get_latest_report()
-        if _fresh:
-            st.session_state["last_report"] = _fresh
-        st.rerun()
 
     _PHASE_LABELS = {
         "idle":        "Waiting to start",
