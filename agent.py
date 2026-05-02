@@ -54,7 +54,7 @@ if not _api_key:
 client = Client(api_key=_api_key)
 del _api_key  # don't keep the key alive as a named module attribute
 
-MODEL_FAST_DEFAULT = MODEL_FAST         # grok-4-1-fast-reasoning — Batch + Sync
+MODEL_FAST_DEFAULT = MODEL_FAST         # grok-4.20-reasoning — Batch + Sync
 MODEL_FLAGSHIP_DEFAULT = MODEL_FLAGSHIP # grok-4.20-reasoning — high accuracy
 MODEL = MODEL_FAST_DEFAULT              # default for backwards-compat references
 BATCH_POLL_INTERVAL = 30        # seconds between poll attempts

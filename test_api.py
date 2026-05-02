@@ -14,7 +14,7 @@ print("🔍 Testing xAI Grok API connection...")
 
 client = Client(api_key=api_key)
 
-chat = client.chat.create(model="grok-4-1-fast-reasoning")
+chat = client.chat.create(model="grok-4.20-reasoning")
 chat.append(system("You are a helpful assistant."))
 chat.append(user("Hi! Please just reply with 'Hello from Grok API! I'm working perfectly.'"))
 

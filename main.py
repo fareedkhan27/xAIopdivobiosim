@@ -473,7 +473,7 @@ with st.sidebar:
     # ── Model selection + Flagship Run ─────────────────────────────────────
     _FLAGSHIP_CODE = os.getenv("FLAGSHIP_CODE", "flagship2026")
     _MODEL_OPTIONS = {
-        "🚀 Grok 4.1 Fast (xAI — Live web + X)": "grok-4-1-fast-reasoning",
+        "🚀 Grok 4.20 Reasoning (xAI — Live web + X)": "grok-4.20-reasoning",
         "🧠 Claude Sonnet 4.5 (OpenRouter)": "anthropic/claude-sonnet-4.5",
         "🔍 Gemini 2.5 Pro (OpenRouter — Live Google Search)": "google/gemini-2.5-pro-preview-03-25",
         "💡 DeepSeek V4 Pro (OpenRouter)": "deepseek/deepseek-v4-pro",
@@ -2145,7 +2145,7 @@ elif page == "🧪 Model Lab":
         st.markdown("---")
         st.subheader("💰 Cost Comparison")
         _cost_map = {
-            "grok-4-1-fast-reasoning": "$0.00 (xAI direct)",
+            "grok-4.20-reasoning": "$0.00 (xAI direct)",
             "anthropic/claude-sonnet-4.5": "~$0.45",
             "google/gemini-2.5-pro-preview-03-25": "~$0.30",
             "deepseek/deepseek-v4-pro": "~$0.08",

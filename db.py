@@ -32,7 +32,7 @@ from datetime import datetime
 # other host) can point to a persistent Volume mount without code changes.
 DB_PATH = os.environ.get("DB_PATH", "opdivo_reports.db")
 
-MODEL_FAST = "grok-4-1-fast-reasoning"
+MODEL_FAST = "grok-4.20-reasoning"
 MODEL_FLAGSHIP = "grok-4.20-reasoning"
 
 
